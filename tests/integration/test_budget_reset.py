@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.services.budget_service import calculate_next_reset
+
 from .conftest import MODEL_NAME
 
 _HAS_GEMINI_KEY = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))

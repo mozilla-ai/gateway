@@ -14,6 +14,7 @@ from gateway.api.routes.chat import get_provider_kwargs
 from gateway.core.config import GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
+
 from .conftest import _run_alembic_migrations
 
 

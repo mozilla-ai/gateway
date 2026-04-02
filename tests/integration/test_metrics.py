@@ -13,6 +13,7 @@ from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
 from gateway.metrics import REGISTRY
+
 from .conftest import _run_alembic_migrations
 
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
+
 from .conftest import _run_alembic_migrations
 
 

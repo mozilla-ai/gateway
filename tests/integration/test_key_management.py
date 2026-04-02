@@ -4,6 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from gateway.core.config import API_KEY_HEADER, GatewayConfig
+
 from .conftest import MODEL_NAME
 
 
