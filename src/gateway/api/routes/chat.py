@@ -90,10 +90,12 @@ def get_provider_kwargs(
             vertex_project = provider_config.get("project")
             vertex_location = provider_config.get("location")
 
-            setup_vertex_environment(
-                credentials=vertex_creds,
-                project=vertex_project,
-                location=vertex_location,
+            kwargs.update(
+                setup_vertex_environment(
+                    credentials=vertex_creds,
+                    project=vertex_project,
+                    location=vertex_location,
+                )
             )
             if "client_args" in provider_config:
                 kwargs["client_args"] = provider_config["client_args"]

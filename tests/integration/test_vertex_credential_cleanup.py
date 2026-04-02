@@ -1,74 +1,76 @@
-"""Tests for Vertex AI credential file caching and cleanup."""
+"""Tests for request-local Vertex credential handling."""
 
-import json
 import os
+from unittest.mock import sentinel
 
-from gateway.auth import vertex_auth
+import pytest
+from fastapi import HTTPException
+
 from gateway.auth.vertex_auth import setup_vertex_environment
 
 
-def test_temp_credential_file_reused_across_calls() -> None:
-    """Test that repeated calls reuse the same temp credential file."""
-    # Reset cached file
-    original = vertex_auth._temp_credential_file
-    vertex_auth._temp_credential_file = None
+def test_setup_vertex_environment_returns_kwargs_without_env_mutation() -> None:
+    """Credentials are resolved into client kwargs without mutating process env."""
+    original_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    original_location = os.environ.get("GOOGLE_CLOUD_LOCATION")
 
-    creds = {"type": "service_account", "project_id": "test-project"}
-
-    try:
-        setup_vertex_environment(credentials=creds, project="test-project")
-        first_file = vertex_auth._temp_credential_file
-        assert first_file is not None
-        assert os.path.exists(first_file)
-
-        setup_vertex_environment(credentials=creds, project="test-project")
-        second_file = vertex_auth._temp_credential_file
-
-        assert first_file == second_file, "Should reuse the same temp file"
-    finally:
-        # Clean up
-        if vertex_auth._temp_credential_file and os.path.exists(
-            vertex_auth._temp_credential_file
-        ):
-            os.remove(vertex_auth._temp_credential_file)
-        vertex_auth._temp_credential_file = original
-        # Clean up env vars we set
-        for var in [
-            "GOOGLE_APPLICATION_CREDENTIALS",
-            "GOOGLE_CLOUD_PROJECT",
-            "GOOGLE_CLOUD_LOCATION",
-        ]:
-            os.environ.pop(var, None)
-
-
-def test_temp_credential_file_contains_valid_json() -> None:
-    """Test that the temp credential file contains valid JSON."""
-    original = vertex_auth._temp_credential_file
-    vertex_auth._temp_credential_file = None
-
-    creds = {
-        "type": "service_account",
-        "project_id": "test-project",
-        "client_email": "test@test.iam.gserviceaccount.com",
-    }
+    os.environ["GOOGLE_CLOUD_PROJECT"] = "existing-project"
+    os.environ["GOOGLE_CLOUD_LOCATION"] = "europe-west1"
 
     try:
-        setup_vertex_environment(credentials=creds, project="test-project")
-        temp_file = vertex_auth._temp_credential_file
-        assert temp_file is not None
+        from gateway.auth import vertex_auth
 
-        with open(temp_file, encoding="utf-8") as f:
-            loaded = json.load(f)
-        assert loaded["project_id"] == "test-project"
+        def _fake_from_info(info: dict[str, object]) -> object:
+            assert info["project_id"] == "config-project"
+            return sentinel.credentials
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                vertex_auth.service_account.Credentials,
+                "from_service_account_info",
+                _fake_from_info,
+            )
+            kwargs = setup_vertex_environment(
+                credentials={"project_id": "config-project", "private_key": "unused"},
+                location="us-central1",
+            )
+
+        assert kwargs["credentials"] is sentinel.credentials
+        assert kwargs["project"] == "config-project"
+        assert kwargs["location"] == "us-central1"
+        assert os.environ["GOOGLE_CLOUD_PROJECT"] == "existing-project"
+        assert os.environ["GOOGLE_CLOUD_LOCATION"] == "europe-west1"
     finally:
-        if vertex_auth._temp_credential_file and os.path.exists(
-            vertex_auth._temp_credential_file
-        ):
-            os.remove(vertex_auth._temp_credential_file)
-        vertex_auth._temp_credential_file = original
-        for var in [
-            "GOOGLE_APPLICATION_CREDENTIALS",
-            "GOOGLE_CLOUD_PROJECT",
-            "GOOGLE_CLOUD_LOCATION",
-        ]:
-            os.environ.pop(var, None)
+        if original_project is None:
+            os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
+        else:
+            os.environ["GOOGLE_CLOUD_PROJECT"] = original_project
+
+        if original_location is None:
+            os.environ.pop("GOOGLE_CLOUD_LOCATION", None)
+        else:
+            os.environ["GOOGLE_CLOUD_LOCATION"] = original_location
+
+
+def test_setup_vertex_environment_uses_env_fallbacks() -> None:
+    """Project and location fall back to env when explicit values are missing."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("GOOGLE_CLOUD_PROJECT", "env-project")
+        mp.setenv("GOOGLE_CLOUD_LOCATION", "env-location")
+
+        kwargs = setup_vertex_environment(credentials=None)
+
+    assert kwargs == {"project": "env-project", "location": "env-location"}
+
+
+def test_setup_vertex_environment_requires_project_resolution() -> None:
+    """Project resolution failure raises a clear 400 error."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        mp.delenv("GOOGLE_CLOUD_LOCATION", raising=False)
+
+        with pytest.raises(HTTPException) as exc:
+            setup_vertex_environment(credentials=None)
+
+    assert exc.value.status_code == 400
+    assert "Could not resolve GCP project ID" in str(exc.value.detail)
