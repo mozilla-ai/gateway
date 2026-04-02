@@ -26,8 +26,10 @@ Scope: entire repo (`/Users/tbille/Documents/mozilla.ai/move/gateway`).
 - Docker local build/run: `docker compose up --build`
 - CI Docker smoke check is implemented in `scripts/docker_liveness_check.sh`.
 ## Lint / Typecheck Commands
-- There is no dedicated lint target in `Makefile` and no Ruff/Black config checked in.
-- Primary static check currently present in dev dependencies: `mypy`.
+- Ruff is configured for linting (rules: `E`, `F`, `I`; line length: 120) in `pyproject.toml`.
+- Run lint checks with `make lint` (or `uv run ruff check src tests scripts`).
+- Ruff is also enforced in CI via `.github/workflows/gateway-lint.yml`.
+- Primary static checks present in dev dependencies: `ruff`, `mypy`.
 - Run type checks (if adding/maintaining typed modules): `uv run mypy src`
 - If introducing a formatter/linter, keep changes in a separate PR unless requested.
 ## Test Commands
