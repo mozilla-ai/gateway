@@ -42,11 +42,17 @@ jobs:
       run: |
          uv sync --dev --frozen
 
+    - name: Run gateway unit tests
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        uv run pytest tests/unit -v --cov --cov-report=xml -n auto
+
     - name: Run gateway integration tests
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
-        uv run pytest tests/integration tests/unit -v --cov --cov-report=xml --cov-append -n auto
+        uv run pytest tests/integration -v --cov --cov-report=xml --cov-append -n auto
 
     - name: Upload coverage
       uses: codecov/codecov-action@v5

@@ -1,4 +1,4 @@
-"""Tests for automatic stream_options injection on streaming requests."""
+"""Unit tests for automatic stream_options injection behavior."""
 
 from typing import Any
 
@@ -6,7 +6,6 @@ from gateway.api.routes.chat import ChatCompletionRequest
 
 
 def test_stream_options_accepted_by_request_model() -> None:
-    """ChatCompletionRequest should accept stream_options from clients."""
     request = ChatCompletionRequest(
         model="openai:gpt-4",
         messages=[{"role": "user", "content": "Hello"}],
@@ -17,7 +16,6 @@ def test_stream_options_accepted_by_request_model() -> None:
 
 
 def test_stream_options_defaults_to_none() -> None:
-    """stream_options should default to None when not provided."""
     request = ChatCompletionRequest(
         model="openai:gpt-4",
         messages=[{"role": "user", "content": "Hello"}],
@@ -26,7 +24,6 @@ def test_stream_options_defaults_to_none() -> None:
 
 
 def test_stream_options_excluded_when_unset() -> None:
-    """stream_options should not appear in model_dump(exclude_unset=True) when not set."""
     request = ChatCompletionRequest(
         model="openai:gpt-4",
         messages=[{"role": "user", "content": "Hello"}],
@@ -37,7 +34,6 @@ def test_stream_options_excluded_when_unset() -> None:
 
 
 def test_stream_options_included_when_set() -> None:
-    """stream_options should appear in model_dump(exclude_unset=True) when explicitly set."""
     request = ChatCompletionRequest(
         model="openai:gpt-4",
         messages=[{"role": "user", "content": "Hello"}],
@@ -52,7 +48,6 @@ def _build_completion_kwargs(
     request_body: dict[str, Any],
     provider_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Simulate the kwargs-building logic from the chat_completions handler."""
     request = ChatCompletionRequest(**request_body)
     request_fields = request.model_dump(exclude_unset=True)
     completion_kwargs: dict[str, Any] = {**(provider_kwargs or {}), **request_fields}
@@ -64,7 +59,6 @@ def _build_completion_kwargs(
 
 
 def test_auto_injects_stream_options_for_streaming() -> None:
-    """Gateway should inject stream_options when client sends stream=True without stream_options."""
     kwargs = _build_completion_kwargs(
         {
             "model": "openai:gpt-4",
@@ -76,7 +70,6 @@ def test_auto_injects_stream_options_for_streaming() -> None:
 
 
 def test_no_injection_for_non_streaming() -> None:
-    """Non-streaming requests should not get stream_options injected."""
     kwargs = _build_completion_kwargs(
         {
             "model": "openai:gpt-4",
@@ -87,7 +80,6 @@ def test_no_injection_for_non_streaming() -> None:
 
 
 def test_preserves_client_stream_options() -> None:
-    """When the client explicitly sets stream_options, the gateway should not override them."""
     custom = {"include_usage": False, "custom_field": "value"}
     kwargs = _build_completion_kwargs(
         {

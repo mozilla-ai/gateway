@@ -1,15 +1,15 @@
-"""Tests for the shared streaming_generator utility."""
+"""Unit tests for the shared streaming_generator utility."""
 
 from collections.abc import AsyncIterator
 
 import pytest
+from any_llm.types.completion import CompletionUsage
 
 from gateway.streaming import (
     ANTHROPIC_STREAM_FORMAT,
     OPENAI_STREAM_FORMAT,
     streaming_generator,
 )
-from any_llm.types.completion import CompletionUsage
 
 _PROVIDER_CRASHED = "provider crashed"
 _LOGGING_FAILED = "logging failed too"
@@ -26,13 +26,12 @@ def _extract_usage(chunk: str) -> CompletionUsage | None:
 
 
 async def _items(*values: str) -> AsyncIterator[str]:
-    for v in values:
-        yield v
+    for value in values:
+        yield value
 
 
 @pytest.mark.asyncio
 async def test_streaming_generator_success_with_usage() -> None:
-    """Test successful streaming with usage tracking."""
     completed_usage: list[CompletionUsage] = []
 
     async def on_complete(usage: CompletionUsage) -> None:
@@ -61,7 +60,6 @@ async def test_streaming_generator_success_with_usage() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_generator_no_usage_skips_on_complete() -> None:
-    """Test that on_complete is not called when no usage data is received."""
     completed = False
 
     async def on_complete(usage: CompletionUsage) -> None:
@@ -89,7 +87,6 @@ async def test_streaming_generator_no_usage_skips_on_complete() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_generator_error_openai_format() -> None:
-    """Test error handling emits OpenAI-style error and [DONE]."""
     error_logged: list[str] = []
 
     async def on_complete(usage: CompletionUsage) -> None:
@@ -122,7 +119,6 @@ async def test_streaming_generator_error_openai_format() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_generator_error_anthropic_format() -> None:
-    """Test error handling emits Anthropic-style error without done marker."""
     error_logged: list[str] = []
 
     async def on_complete(usage: CompletionUsage) -> None:
@@ -155,8 +151,6 @@ async def test_streaming_generator_error_anthropic_format() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_generator_error_logging_failure_is_swallowed() -> None:
-    """Test that failures in on_error don't propagate to the caller."""
-
     async def on_complete(usage: CompletionUsage) -> None:
         pytest.fail("on_complete should not be called on error")
 

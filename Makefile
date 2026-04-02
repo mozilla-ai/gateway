@@ -1,9 +1,11 @@
-.PHONY: help dev test
+.PHONY: help dev test test-unit test-integration
 
-help:
+	help:
 	@printf "Available targets:\n"
 	@printf "  dev  Run gateway with uvicorn --reload using .env\n"
-	@printf "  test Run gateway test suite\n"
+	@printf "  test Run full test suite (unit + integration)\n"
+	@printf "  test-unit Run unit tests\n"
+	@printf "  test-integration Run integration tests\n"
 
 dev:
 	@set -a; \
@@ -12,4 +14,10 @@ dev:
 	uv run --env-file .env uvicorn gateway.dev:create_dev_app --factory --app-dir src --reload --host "$${GATEWAY_HOST:-0.0.0.0}" --port "$${GATEWAY_PORT:-8000}" --reload-dir src
 
 test:
-	uv run pytest -v tests/integration tests/unit/test_gateway_*.py
+	uv run pytest -v tests/unit tests/integration
+
+test-unit:
+	uv run pytest -v tests/unit
+
+test-integration:
+	uv run pytest -v tests/integration
