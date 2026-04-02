@@ -149,10 +149,26 @@ def test_get_pricing(client: TestClient, master_key_header: dict[str, str]) -> N
         headers=master_key_header,
     )
 
-    response = client.get("/v1/pricing/openai:gpt-4o")
+    response = client.get("/v1/pricing/openai:gpt-4o", headers=master_key_header)
     assert response.status_code == 200
     data = response.json()
     assert data["model_key"] == "openai:gpt-4o"
+
+
+def test_get_pricing_requires_auth(client: TestClient, master_key_header: dict[str, str]) -> None:
+    """Pricing reads require API key or master key authentication."""
+    client.post(
+        "/v1/pricing",
+        json={
+            "model_key": "openai:gpt-4o",
+            "input_price_per_million": 2.5,
+            "output_price_per_million": 10.0,
+        },
+        headers=master_key_header,
+    )
+
+    response = client.get("/v1/pricing/openai:gpt-4o")
+    assert response.status_code == 401
 
 
 def test_user_with_budget(client: TestClient, master_key_header: dict[str, str]) -> None:
