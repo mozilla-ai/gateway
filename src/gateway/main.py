@@ -130,7 +130,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         if not request.url.path.startswith(_PUBLIC_PREFIXES):
             response.headers["Cache-Control"] = "private, no-store, no-cache"
-            response.headers["Vary"] = "Authorization"
+            vary_values = {
+                part.strip()
+                for part in response.headers.get("Vary", "").split(",")
+                if part.strip()
+            }
+            vary_values.add("Authorization")
+            response.headers["Vary"] = ", ".join(sorted(vary_values))
         return response
 
 
