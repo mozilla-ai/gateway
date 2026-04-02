@@ -4,7 +4,6 @@ from fastapi.responses import HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from typing_extensions import override
 
-from gateway.version import __version__
 from gateway.api.deps import set_config
 from gateway.api.main import register_routers
 from gateway.core.config import GatewayConfig
@@ -12,6 +11,7 @@ from gateway.core.database import get_db, init_db
 from gateway.rate_limit import RateLimiter
 from gateway.services.bootstrap_service import bootstrap_first_api_key
 from gateway.services.pricing_init_service import initialize_pricing_from_config
+from gateway.version import __version__
 
 _PUBLIC_PREFIXES = ("/health",)
 
@@ -76,7 +76,10 @@ _ROOT_TUTORIAL_HTML = """<!doctype html>
         <a class="link" href="https://mozilla-ai.github.io/any-llm/gateway/quickstart/">Gateway Quickstart</a>
       </div>
 
-      <p class="note">On first startup, the gateway prints a bootstrap API key in logs. Export it as <code>GATEWAY_API_KEY</code> and use that value in your client.</p>
+      <p class="note">
+        On first startup, the gateway prints a bootstrap API key in logs. Export it as
+        <code>GATEWAY_API_KEY</code> and use that value in your client.
+      </p>
 
       <div class="block">
         <pre><code>export GATEWAY_API_KEY=YOUR_BOOTSTRAP_GATEWAY_KEY
@@ -121,20 +124,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     @override
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         if not request.url.path.startswith(_PUBLIC_PREFIXES):
             response.headers["Cache-Control"] = "private, no-store, no-cache"
-            vary_values = {
-                part.strip()
-                for part in response.headers.get("Vary", "").split(",")
-                if part.strip()
-            }
+            vary_values = {part.strip() for part in response.headers.get("Vary", "").split(",") if part.strip()}
             vary_values.add("Authorization")
             response.headers["Vary"] = ", ".join(sorted(vary_values))
         return response

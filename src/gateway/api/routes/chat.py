@@ -3,13 +3,18 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+from any_llm import AnyLLM, LLMProvider, acompletion
+from any_llm.types.completion import (
+    ChatCompletion,
+    ChatCompletionChunk,
+    CompletionUsage,
+)
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from any_llm import AnyLLM, LLMProvider, acompletion
 from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.auth.vertex_auth import setup_vertex_environment
@@ -21,11 +26,6 @@ from gateway.rate_limit import RateLimitInfo, check_rate_limit
 from gateway.services.budget_service import validate_user_budget
 from gateway.services.pricing_service import find_model_pricing
 from gateway.streaming import OPENAI_STREAM_FORMAT, streaming_generator
-from any_llm.types.completion import (
-    ChatCompletion,
-    ChatCompletionChunk,
-    CompletionUsage,
-)
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 

@@ -1,11 +1,12 @@
-.PHONY: help dev test test-unit test-integration
+.PHONY: help dev test test-unit test-integration lint
 
-	help:
+help:
 	@printf "Available targets:\n"
 	@printf "  dev  Run gateway with uvicorn --reload using .env\n"
 	@printf "  test Run full test suite (unit + integration)\n"
 	@printf "  test-unit Run unit tests\n"
 	@printf "  test-integration Run integration tests\n"
+	@printf "  lint Run Ruff lint checks\n"
 
 dev:
 	@set -a; \
@@ -21,3 +22,6 @@ test-unit:
 
 test-integration:
 	uv run pytest -v tests/integration
+
+lint:
+	uv run ruff check src tests scripts

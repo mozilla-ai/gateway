@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 
+import core.config as config_module
 import pytest
 
-import core.config as config_module
 from gateway.core.config import load_config
 
 

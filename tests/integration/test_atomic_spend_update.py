@@ -1,11 +1,11 @@
 """Tests for atomic spend update via SQL expression."""
 
 import pytest
+from any_llm.types.completion import CompletionUsage
 from sqlalchemy.orm import Session
 
 from gateway.api.routes.chat import log_usage
 from gateway.models.entities import ModelPricing, User
-from any_llm.types.completion import CompletionUsage
 
 
 @pytest.mark.asyncio

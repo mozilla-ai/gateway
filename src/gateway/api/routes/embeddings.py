@@ -4,12 +4,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+from any_llm import AnyLLM, aembedding
+from any_llm.types.completion import CreateEmbeddingResponse
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from any_llm import AnyLLM, aembedding
 from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.api.routes.chat import get_provider_kwargs, rate_limit_headers
@@ -19,7 +20,6 @@ from gateway.models.entities import APIKey, UsageLog, User
 from gateway.rate_limit import check_rate_limit
 from gateway.services.budget_service import validate_user_budget
 from gateway.services.pricing_service import find_model_pricing
-from any_llm.types.completion import CreateEmbeddingResponse
 
 router = APIRouter(prefix="/v1", tags=["embeddings"])
 

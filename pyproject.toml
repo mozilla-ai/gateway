@@ -30,6 +30,7 @@ dev = [
     "pytest-rerunfailures>=16.0",
     "pytest-timeout",
     "pytest-xdist>=3.6.1",
+    "ruff>=0.15.9",
     "testcontainers[postgres]>=4.0.0",
 ]
 
@@ -42,3 +43,15 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/generate_openapi.py" = ["E402"]
+"tests/integration/conftest.py" = ["E402"]

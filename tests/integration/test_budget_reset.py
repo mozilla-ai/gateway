@@ -213,7 +213,7 @@ def test_budget_actually_resets_when_duration_passes(
 
 
 def test_per_user_reset_schedules_with_actual_reset(client: TestClient, master_key_header: dict[str, str]) -> None:
-    """Test that different users on the same budget have independent reset schedules and actually reset independently."""
+    """Test that users on the same budget reset on independent schedules."""
     budget_response = client.post(
         "/v1/budgets",
         json={"max_budget": 100.0, "budget_duration_sec": 604800},

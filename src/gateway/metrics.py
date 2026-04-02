@@ -5,7 +5,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 from starlette.responses import Response
 
 if TYPE_CHECKING:

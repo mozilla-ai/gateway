@@ -50,7 +50,9 @@ class GatewayConfig(BaseSettings):
     )
     pricing: dict[str, PricingConfig] = Field(
         default_factory=dict,
-        description="Pre-configured model USD pricing (model_key -> {input_price_per_million, output_price_per_million})",
+        description=(
+            "Pre-configured model USD pricing (model_key -> {input_price_per_million, output_price_per_million})"
+        ),
     )
     enable_metrics: bool = Field(
         default=False,

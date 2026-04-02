@@ -4,9 +4,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from any_llm.types.completion import CreateEmbeddingResponse, Embedding, Usage
+from fastapi.testclient import TestClient
 
 
 def _mock_embedding_response() -> CreateEmbeddingResponse:

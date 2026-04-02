@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from any_llm.types.completion import CompletionUsage
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,6 @@ from gateway.core.config import GatewayConfig, PricingConfig
 from gateway.db import ModelPricing, get_db
 from gateway.main import create_app
 from gateway.models.entities import UsageLog
-from any_llm.types.completion import CompletionUsage
 
 
 def test_pricing_loaded_from_config(postgres_url: str, test_db: Session) -> None:

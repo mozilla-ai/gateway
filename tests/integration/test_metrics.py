@@ -134,7 +134,12 @@ def test_request_duration_recorded(metrics_client: TestClient) -> None:
 
 
 def test_token_metrics_recorded(metrics_client: TestClient) -> None:
-    from any_llm.types.completion import ChatCompletion, ChatCompletionMessage, Choice, CompletionUsage
+    from any_llm.types.completion import (
+        ChatCompletion,
+        ChatCompletionMessage,
+        Choice,
+        CompletionUsage,
+    )
 
     user_id = _create_user(metrics_client)
 
@@ -170,7 +175,12 @@ def test_token_metrics_recorded(metrics_client: TestClient) -> None:
 
 
 def test_cost_metric_recorded_with_pricing(metrics_client: TestClient) -> None:
-    from any_llm.types.completion import ChatCompletion, ChatCompletionMessage, Choice, CompletionUsage
+    from any_llm.types.completion import (
+        ChatCompletion,
+        ChatCompletionMessage,
+        Choice,
+        CompletionUsage,
+    )
 
     user_id = _create_user(metrics_client, user_id="cost-user")
 

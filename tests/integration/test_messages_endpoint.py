@@ -4,10 +4,15 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from any_llm.types.messages import (
+    MessageResponse,
+    MessageUsage,
+    TextBlock,
+    ToolUseBlock,
+)
 from fastapi.testclient import TestClient
 
 from gateway.core.config import API_KEY_HEADER
-from any_llm.types.messages import MessageResponse, MessageUsage, TextBlock, ToolUseBlock
 
 
 def _make_message_response(**overrides: Any) -> MessageResponse:

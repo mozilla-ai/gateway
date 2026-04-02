@@ -3,9 +3,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
-from gateway.version import __version__
 from gateway.api.deps import get_db
 from gateway.log_config import logger
+from gateway.version import __version__
 
 router = APIRouter(prefix="/health", tags=["health"])
 

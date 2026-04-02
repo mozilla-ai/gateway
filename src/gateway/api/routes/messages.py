@@ -1,11 +1,18 @@
 from typing import Annotated, Any
 
+from any_llm import AnyLLM, amessages
+from any_llm.types.completion import CompletionUsage
+from any_llm.types.messages import (
+    MessageDeltaEvent,
+    MessageResponse,
+    MessageStartEvent,
+    MessageStreamEvent,
+)
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from any_llm import AnyLLM, amessages
 from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.api.routes.chat import get_provider_kwargs, log_usage, rate_limit_headers
@@ -15,13 +22,6 @@ from gateway.models.entities import APIKey
 from gateway.rate_limit import check_rate_limit
 from gateway.services.budget_service import validate_user_budget
 from gateway.streaming import ANTHROPIC_STREAM_FORMAT, streaming_generator
-from any_llm.types.completion import CompletionUsage
-from any_llm.types.messages import (
-    MessageDeltaEvent,
-    MessageResponse,
-    MessageStartEvent,
-    MessageStreamEvent,
-)
 
 router = APIRouter(prefix="/v1", tags=["messages"])
 

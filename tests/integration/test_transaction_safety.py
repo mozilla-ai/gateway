@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from any_llm.types.completion import CompletionUsage
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -11,7 +12,6 @@ from gateway.api.routes.chat import log_usage
 from gateway.core.config import API_KEY_HEADER
 from gateway.models.entities import Budget, User
 from gateway.services.budget_service import _is_model_free, reset_user_budget
-from any_llm.types.completion import CompletionUsage
 
 
 def test_create_user_rollback_on_commit_failure(

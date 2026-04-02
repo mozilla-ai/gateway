@@ -1,9 +1,9 @@
 """Pricing initialization from configuration."""
 
+from any_llm import AnyLLM
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from any_llm import AnyLLM
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
 from gateway.models.entities import ModelPricing

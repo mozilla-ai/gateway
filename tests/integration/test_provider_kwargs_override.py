@@ -5,11 +5,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from any_llm import LLMProvider
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from any_llm import LLMProvider
 from gateway.api.routes.chat import get_provider_kwargs
 from gateway.core.config import GatewayConfig
 from gateway.db import Base, get_db

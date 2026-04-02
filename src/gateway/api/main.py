@@ -1,6 +1,16 @@
 from fastapi import FastAPI
 
-from gateway.api.routes import budgets, chat, embeddings, health, keys, messages, models, pricing, users
+from gateway.api.routes import (
+    budgets,
+    chat,
+    embeddings,
+    health,
+    keys,
+    messages,
+    models,
+    pricing,
+    users,
+)
 
 
 def register_routers(app: FastAPI) -> None:

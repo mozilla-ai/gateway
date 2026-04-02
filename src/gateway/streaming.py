@@ -5,8 +5,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from gateway.log_config import logger
 from any_llm.types.completion import CompletionUsage
+
+from gateway.log_config import logger
 
 
 @dataclass(frozen=True)

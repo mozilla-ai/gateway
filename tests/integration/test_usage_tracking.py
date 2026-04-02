@@ -225,7 +225,9 @@ async def test_streaming_completion_accuracy(
         assert log.cost is not None, "Cost should be logged when pricing is configured"
         assert abs(log.cost - expected_cost) < 0.0001, (
             f"Logged cost {log.cost} does not match expected cost {expected_cost} from aggregated tokens. "
-            f"Calculation: ({aggregated_prompt_tokens}/1M * ${input_price}) + ({aggregated_completion_tokens}/1M * ${output_price})"
+            "Calculation: "
+            f"({aggregated_prompt_tokens}/1M * ${input_price}) + "
+            f"({aggregated_completion_tokens}/1M * ${output_price})"
         )
 
         # Check user spend
@@ -239,7 +241,9 @@ async def test_streaming_completion_accuracy(
         # Verify the exact cost increase matches our calculation
         assert abs(cost_increase - expected_cost) < 0.0001, (
             f"User spend increase {cost_increase} does not match expected cost {expected_cost}. "
-            f"Calculation: ({aggregated_prompt_tokens}/1M * ${input_price}) + ({aggregated_completion_tokens}/1M * ${output_price})"
+            "Calculation: "
+            f"({aggregated_prompt_tokens}/1M * ${input_price}) + "
+            f"({aggregated_completion_tokens}/1M * ${output_price})"
         )
     finally:
         db.close()

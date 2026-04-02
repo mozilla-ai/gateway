@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from gateway.core.config import GatewayConfig
-from gateway.rate_limit import RateLimitInfo, RateLimiter
+from gateway.rate_limit import RateLimiter, RateLimitInfo
 
 
 def test_rate_limiter_allows_under_limit() -> None:
