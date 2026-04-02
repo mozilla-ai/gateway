@@ -1,5 +1,6 @@
 """Unit tests for rate limiter core behavior and config validation."""
 
+from collections import deque
 from unittest.mock import patch
 
 import pytest
@@ -108,6 +109,17 @@ def test_rate_limiter_cleanup() -> None:
 
         assert "stale-user" not in limiter._requests
         assert "active-user" in limiter._requests
+
+
+def test_rate_limiter_uses_deque_buckets() -> None:
+    limiter = RateLimiter(rpm=2)
+
+    with patch("gateway.rate_limit.time") as mock_time:
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.time.return_value = 1700000000.0
+        limiter.check("user-1")
+
+    assert isinstance(limiter._requests["user-1"], deque)
 
 
 def test_config_rejects_zero_rate_limit() -> None:

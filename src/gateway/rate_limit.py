@@ -2,7 +2,7 @@
 
 import math
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, status
@@ -31,7 +31,7 @@ class RateLimiter:
     def __init__(self, rpm: int) -> None:
         self._rpm = rpm
         self._window_sec = 60.0
-        self._requests: dict[str, list[float]] = defaultdict(list)
+        self._requests: dict[str, deque[float]] = defaultdict(deque)
         self._call_count = 0
 
     def check(self, user_id: str) -> RateLimitInfo:
@@ -47,17 +47,17 @@ class RateLimiter:
         now = time.monotonic()
         cutoff = now - self._window_sec
 
-        timestamps = self._requests[user_id]
-        self._requests[user_id] = [t for t in timestamps if t > cutoff]
-
         self._call_count += 1
         if self._call_count >= self._CLEANUP_INTERVAL:
             self._cleanup(cutoff)
             self._call_count = 0
 
-        current = self._requests[user_id]
-        if len(current) >= self._rpm:
-            oldest = current[0]
+        timestamps = self._requests[user_id]
+        while timestamps and timestamps[0] <= cutoff:
+            timestamps.popleft()
+
+        if len(timestamps) >= self._rpm:
+            oldest = timestamps[0]
             retry_after = math.ceil(oldest - cutoff)
             record_rate_limit_hit(user_id)
             raise HTTPException(
@@ -66,15 +66,15 @@ class RateLimiter:
                 headers={"Retry-After": str(retry_after)},
             )
 
-        current.append(now)
-        remaining = self._rpm - len(current)
+        timestamps.append(now)
+        remaining = self._rpm - len(timestamps)
         # Use wall-clock time for the externally-facing reset header
-        reset = time.time() + (current[0] + self._window_sec - now)
+        reset = time.time() + (timestamps[0] + self._window_sec - now)
         return RateLimitInfo(limit=self._rpm, remaining=remaining, reset=reset)
 
     def _cleanup(self, cutoff: float) -> None:
         """Remove entries for users with no recent requests."""
-        stale = [uid for uid, ts in self._requests.items() if all(t <= cutoff for t in ts)]
+        stale = [uid for uid, ts in self._requests.items() if not ts or ts[-1] <= cutoff]
         for uid in stale:
             del self._requests[uid]
 
