@@ -1,4 +1,4 @@
-name: Gateway Lint
+name: Gateway Typecheck
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - 'scripts/**'
       - 'pyproject.toml'
       - 'uv.lock'
-      - '.github/workflows/gateway-lint.yml'
+      - '.github/workflows/gateway-typecheck.yml'
   pull_request:
     branches: [ main ]
     paths:
@@ -18,11 +18,11 @@ on:
       - 'scripts/**'
       - 'pyproject.toml'
       - 'uv.lock'
-      - '.github/workflows/gateway-lint.yml'
+      - '.github/workflows/gateway-typecheck.yml'
   workflow_dispatch:
 
 jobs:
-  lint:
+  typecheck:
     runs-on: ubuntu-latest
 
     steps:
@@ -36,5 +36,5 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev --frozen
 
-    - name: Run Ruff lint
-      run: uv run ruff check src tests scripts
+    - name: Run mypy type check
+      run: uv run mypy
