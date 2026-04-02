@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -209,6 +210,47 @@ def test_api_key_last_used_tracking(
 
     assert updated_last_used is not None
     assert updated_last_used != initial_last_used
+
+
+def test_api_key_last_used_tracking_throttles_db_writes(
+    client: TestClient,
+    master_key_header: dict[str, str],
+) -> None:
+    """Requests within the throttle window should not rewrite last_used_at."""
+    create_response = client.post(
+        "/v1/keys",
+        json={"key_name": "usage-throttle"},
+        headers=master_key_header,
+    )
+    api_key = create_response.json()
+
+    first_use = datetime(2026, 1, 1, tzinfo=UTC)
+    second_use = first_use + timedelta(seconds=60)
+
+    with patch("gateway.api.deps.datetime") as mock_datetime:
+        mock_datetime.now.return_value = first_use
+        response = client.get(
+            "/v1/models",
+            headers={API_KEY_HEADER: f"Bearer {api_key['key']}"},
+        )
+        assert response.status_code == 200
+
+    first_state = client.get(f"/v1/keys/{api_key['id']}", headers=master_key_header)
+    first_last_used = first_state.json()["last_used_at"]
+
+    with patch("gateway.api.deps.datetime") as mock_datetime:
+        mock_datetime.now.return_value = second_use
+        response = client.get(
+            "/v1/models",
+            headers={API_KEY_HEADER: f"Bearer {api_key['key']}"},
+        )
+        assert response.status_code == 200
+
+    second_state = client.get(f"/v1/keys/{api_key['id']}", headers=master_key_header)
+    second_last_used = second_state.json()["last_used_at"]
+
+    assert first_last_used is not None
+    assert second_last_used == first_last_used
 
 
 def test_inactive_api_key_rejected(

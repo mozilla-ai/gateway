@@ -13,6 +13,7 @@ from gateway.metrics import record_auth_failure
 from gateway.models.entities import APIKey
 
 _config: GatewayConfig | None = None
+_LAST_USED_UPDATE_INTERVAL_SECONDS = 300
 
 
 def set_config(config: GatewayConfig) -> None:
@@ -99,11 +100,18 @@ def _verify_and_update_api_key(db: Session, token: str) -> APIKey:
             detail="API key has expired",
         )
 
-    api_key.last_used_at = datetime.now(UTC)
-    try:
-        db.commit()
-    except SQLAlchemyError:
-        db.rollback()
+    now = datetime.now(UTC)
+    should_update_last_used = (
+        api_key.last_used_at is None
+        or (now - api_key.last_used_at).total_seconds() >= _LAST_USED_UPDATE_INTERVAL_SECONDS
+    )
+
+    if should_update_last_used:
+        api_key.last_used_at = now
+        try:
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
 
     return api_key
 
