@@ -2,13 +2,11 @@ FROM python:3.13-slim AS base
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip uv
 
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 COPY src ./src
-RUN pip install --no-cache-dir -e .
+RUN uv sync --frozen --no-dev
 
 COPY . .
 
@@ -25,4 +23,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENV GATEWAY_HOST=0.0.0.0
 ENV GATEWAY_PORT=8000
 
-CMD ["gateway", "serve"]
+CMD ["uv", "run", "gateway", "serve"]

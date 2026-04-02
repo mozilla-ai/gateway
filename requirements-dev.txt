@@ -1,9 +1,0 @@
--r requirements.txt
-mypy
-pytest>=8,<10
-pytest-asyncio>=0.26.0
-pytest-cov>=6.2.1,<8
-pytest-rerunfailures>=16.0
-pytest-timeout
-pytest-xdist>=3.6.1
-testcontainers[postgres]>=4.0.0

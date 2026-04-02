@@ -8,7 +8,7 @@ budget enforcement, usage tracking, and OpenAI-compatible endpoints.
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -r requirements-dev.txt -e .
+uv sync --dev
 ```
 
 ## Run locally

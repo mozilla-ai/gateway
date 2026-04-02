@@ -10,8 +10,8 @@ on:
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - 'config.example.yml'
-      - 'requirements*.txt'
       - 'pyproject.toml'
+      - 'uv.lock'
       - 'scripts/docker_liveness_check.sh'
       - '.github/workflows/gateway-docker.yml'
   release:
