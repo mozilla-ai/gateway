@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
-from tests.gateway.conftest import _run_alembic_migrations
+from .conftest import _run_alembic_migrations
 
 
 class _MockCompletionError(Exception):
@@ -120,7 +120,7 @@ def test_rate_limit_headers_on_success(rate_limit_client: TestClient) -> None:
     async def mock_acompletion(**kwargs: Any) -> ChatCompletion:
         return mock_response
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         resp = _chat_request(rate_limit_client, user_id)
 
     assert resp.status_code == 200
@@ -137,7 +137,7 @@ def test_rate_limit_returns_429_with_retry_after(rate_limit_client: TestClient) 
     async def mock_acompletion(**kwargs: Any) -> None:
         raise _MockCompletionError
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         for _ in range(3):
             _chat_request(rate_limit_client, user_id)
 
@@ -153,7 +153,7 @@ def test_no_rate_limit_allows_unlimited(no_rate_limit_client: TestClient) -> Non
     async def mock_acompletion(**kwargs: Any) -> None:
         raise _MockCompletionError
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         for _ in range(10):
             resp = _chat_request(no_rate_limit_client, user_id)
             assert resp.status_code != 429

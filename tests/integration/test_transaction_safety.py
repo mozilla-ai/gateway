@@ -20,7 +20,7 @@ def test_create_user_rollback_on_commit_failure(
 ) -> None:
     """create_user rolls back and returns 500 when commit fails."""
     with patch(
-        "api.routes.users.Session.commit",
+        "gateway.api.routes.users.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -39,7 +39,7 @@ def test_delete_user_rollback_on_commit_failure(
     client.post("/v1/users", json={"user_id": "del-fail-user"}, headers=master_key_header)
 
     with patch(
-        "api.routes.users.Session.commit",
+        "gateway.api.routes.users.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.delete("/v1/users/del-fail-user", headers=master_key_header)
@@ -56,7 +56,7 @@ def test_create_key_rollback_on_commit_failure(
 ) -> None:
     """create_key rolls back on commit failure."""
     with patch(
-        "api.routes.keys.Session.commit",
+        "gateway.api.routes.keys.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -73,7 +73,7 @@ def test_create_budget_rollback_on_commit_failure(
 ) -> None:
     """create_budget rolls back on commit failure."""
     with patch(
-        "api.routes.budgets.Session.commit",
+        "gateway.api.routes.budgets.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -90,7 +90,7 @@ def test_set_pricing_rollback_on_commit_failure(
 ) -> None:
     """set_pricing rolls back on commit failure."""
     with patch(
-        "api.routes.pricing.Session.commit",
+        "gateway.api.routes.pricing.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -141,7 +141,7 @@ def test_is_model_free_catches_unsupported_provider_error(test_db: Session) -> N
 def test_is_model_free_catches_sqlalchemy_error(test_db: Session) -> None:
     """_is_model_free returns False on SQLAlchemy errors during pricing lookup."""
     with patch(
-        "services.budget_service.find_model_pricing",
+        "gateway.services.budget_service.find_model_pricing",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         result = _is_model_free(test_db, "openai:gpt-4o")
@@ -151,7 +151,7 @@ def test_is_model_free_catches_sqlalchemy_error(test_db: Session) -> None:
 def test_is_model_free_does_not_catch_unexpected_errors(test_db: Session) -> None:
     """_is_model_free does not swallow unexpected non-DB, non-ValueError exceptions."""
     with (
-        patch("services.budget_service.find_model_pricing", side_effect=RuntimeError("unexpected")),
+        patch("gateway.services.budget_service.find_model_pricing", side_effect=RuntimeError("unexpected")),
         pytest.raises(RuntimeError, match="unexpected"),
     ):
         _is_model_free(test_db, "openai:gpt-4o")
@@ -170,7 +170,7 @@ def test_auth_commit_failure_does_not_break_verification(
     api_key = key_resp.json()["key"]
 
     with patch(
-        "api.deps.Session.commit",
+        "gateway.api.deps.Session.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.get(

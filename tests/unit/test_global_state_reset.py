@@ -22,7 +22,7 @@ def test_reset_config_clears_state() -> None:
 
 
 def test_reset_db_allows_reinit() -> None:
-    from core import database
+    from gateway.core import database
 
     reset_db()
 

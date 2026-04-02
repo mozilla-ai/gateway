@@ -13,7 +13,7 @@ from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
 from gateway.metrics import REGISTRY
-from tests.gateway.conftest import _run_alembic_migrations
+from .conftest import _run_alembic_migrations
 
 
 def _sample(name: str, labels: dict[str, str]) -> float:
@@ -166,7 +166,7 @@ def test_token_metrics_recorded(metrics_client: TestClient) -> None:
     async def mock_acompletion(**kwargs: Any) -> ChatCompletion:
         return mock_response
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         resp = _chat_request(metrics_client, user_id)
 
     assert resp.status_code == 200
@@ -217,7 +217,7 @@ def test_cost_metric_recorded_with_pricing(metrics_client: TestClient) -> None:
     async def mock_acompletion(**kwargs: Any) -> ChatCompletion:
         return mock_response
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         resp = _chat_request(metrics_client, user_id)
 
     assert resp.status_code == 200
@@ -237,7 +237,7 @@ def test_rate_limit_hit_metric(metrics_rate_limit_client: TestClient) -> None:
         msg = "short-circuit"
         raise RuntimeError(msg)
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         # Exhaust rate limit (rpm=2)
         for _ in range(2):
             _chat_request(metrics_rate_limit_client, user_id)
