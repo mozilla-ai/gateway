@@ -6,10 +6,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from any_llm import AnyLLM, aembedding
 from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
+from gateway.api.routes._helpers import resolve_user_id
 from gateway.api.routes.chat import get_provider_kwargs, rate_limit_headers
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
@@ -37,7 +39,9 @@ async def create_embedding(
     raw_request: Request,
     response: Response,
     request: EmbeddingRequest,
-    auth_result: Annotated[tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)],
+    auth_result: Annotated[
+        tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)
+    ],
     db: Annotated[Session, Depends(get_db)],
     config: Annotated[GatewayConfig, Depends(get_config)],
 ) -> CreateEmbeddingResponse:
@@ -50,28 +54,23 @@ async def create_embedding(
     """
     api_key, is_master_key = auth_result
 
-    user_id: str
-    if is_master_key:
-        if not request.user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="When using master key, 'user' field is required in request body",
-            )
-        user_id = request.user
-    elif request.user:
-        user_id = request.user
-    else:
-        if api_key is None:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="API key validation failed",
-            )
-        if not api_key.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="API key has no associated user",
-            )
-        user_id = str(api_key.user_id)
+    user_id = resolve_user_id(
+        user_id_from_request=request.user,
+        api_key=api_key,
+        is_master_key=is_master_key,
+        master_key_error=HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="When using master key, 'user' field is required in request body",
+        ),
+        no_api_key_error=HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API key validation failed",
+        ),
+        no_user_error=HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API key has no associated user",
+        ),
+    )
 
     rate_limit_info = check_rate_limit(raw_request, user_id)
 
@@ -112,21 +111,25 @@ async def create_embedding(
         if result.usage:
             pricing = find_model_pricing(db, provider, model)
             if pricing:
-                cost = (result.usage.prompt_tokens / 1_000_000) * pricing.input_price_per_million
+                cost = (
+                    result.usage.prompt_tokens / 1_000_000
+                ) * pricing.input_price_per_million
                 usage_log.cost = cost
 
-                db.query(User).filter(User.user_id == user_id, User.deleted_at.is_(None)).update(
-                    {User.spend: User.spend + cost}
-                )
+                db.query(User).filter(
+                    User.user_id == user_id, User.deleted_at.is_(None)
+                ).update({User.spend: User.spend + cost})
             else:
                 model_ref = f"{provider}:{model}" if provider else model
-                logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
+                logger.warning(
+                    f"No pricing configured for '{model_ref}'. Usage will be tracked without cost."
+                )
 
         try:
             db.add(usage_log)
             db.commit()
-        except Exception as e:
-            logger.error(f"Failed to log usage to database: {e}")
+        except SQLAlchemyError as e:
+            logger.error("Failed to log usage to database: %s", e)
             db.rollback()
 
     except HTTPException:
@@ -146,11 +149,11 @@ async def create_embedding(
         try:
             db.add(error_log)
             db.commit()
-        except Exception as log_err:
-            logger.error(f"Failed to log usage to database: {log_err}")
+        except SQLAlchemyError as log_err:
+            logger.error("Failed to log usage to database: %s", log_err)
             db.rollback()
 
-        logger.error(f"Provider call failed for {provider}:{model}: {e}")
+        logger.error("Provider call failed for %s:%s: %s", provider, model, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The request could not be completed by the provider",
