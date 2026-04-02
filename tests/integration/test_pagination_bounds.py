@@ -33,9 +33,9 @@ def test_budgets_list_rejects_excessive_limit(client: TestClient, master_key_hea
     assert response.status_code == 422
 
 
-def test_pricing_list_rejects_excessive_limit(client: TestClient) -> None:
+def test_pricing_list_rejects_excessive_limit(client: TestClient, master_key_header: dict[str, str]) -> None:
     """Test that /v1/pricing rejects limit > 1000."""
-    response = client.get("/v1/pricing?limit=10000")
+    response = client.get("/v1/pricing?limit=10000", headers=master_key_header)
     assert response.status_code == 422
 
 

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from gateway.api.deps import get_db, verify_master_key
+from gateway.api.deps import get_db, verify_api_key_or_master_key, verify_master_key
 from gateway.models.entities import ModelPricing
 
 router = APIRouter(prefix="/v1/pricing", tags=["pricing"])
@@ -75,7 +75,7 @@ async def set_pricing(
     return PricingResponse.from_model(pricing)
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(verify_api_key_or_master_key)])
 async def list_pricing(
     db: Annotated[Session, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -87,7 +87,7 @@ async def list_pricing(
     return [PricingResponse.from_model(pricing) for pricing in pricings]
 
 
-@router.get("/{model_key}")
+@router.get("/{model_key}", dependencies=[Depends(verify_api_key_or_master_key)])
 async def get_pricing(
     model_key: str,
     db: Annotated[Session, Depends(get_db)],
