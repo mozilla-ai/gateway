@@ -10,7 +10,8 @@ from sqlalchemy.orm import sessionmaker
 
 from gateway.core.config import GatewayConfig
 from gateway.models.entities import UsageLog, User
-from tests.gateway.conftest import MODEL_NAME
+
+from .conftest import MODEL_NAME
 
 _HAS_GEMINI_KEY = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
 

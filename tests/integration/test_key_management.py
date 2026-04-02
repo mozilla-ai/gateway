@@ -4,7 +4,8 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from gateway.core.config import API_KEY_HEADER, GatewayConfig
-from tests.gateway.conftest import MODEL_NAME
+
+from .conftest import MODEL_NAME
 
 
 def test_create_api_key(client: TestClient, master_key_header: dict[str, str]) -> None:

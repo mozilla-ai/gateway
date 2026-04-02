@@ -14,7 +14,8 @@ from gateway.api.routes.chat import get_provider_kwargs
 from gateway.core.config import GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
-from tests.gateway.conftest import _run_alembic_migrations
+
+from .conftest import _run_alembic_migrations
 
 
 class _MockCompletionError(Exception):
@@ -105,7 +106,7 @@ async def test_user_model_not_overridden_by_provider_config(
     )
     assert response.status_code == 200
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         client_with_model_in_provider.post(
             "/v1/chat/completions",
             json={
@@ -134,7 +135,7 @@ async def test_unset_optional_fields_do_not_override_provider_defaults(
 
     master_key_header = {"X-AnyLLM-Key": "Bearer test-master-key"}
 
-    with patch("api.routes.chat.acompletion", new=mock_acompletion):
+    with patch("gateway.api.routes.chat.acompletion", new=mock_acompletion):
         client_with_model_in_provider.post(
             "/v1/chat/completions",
             json={

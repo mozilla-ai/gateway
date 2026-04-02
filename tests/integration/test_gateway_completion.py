@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.gateway.conftest import MODEL_NAME
+from .conftest import MODEL_NAME
 
 if TYPE_CHECKING:
-    from tests.gateway.conftest import LiveServer
+    from .conftest import LiveServer
 
 
 _HAS_GEMINI_KEY = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
