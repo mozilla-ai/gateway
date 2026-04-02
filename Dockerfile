@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS base
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
@@ -8,12 +8,20 @@ COPY pyproject.toml uv.lock ./
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-COPY . .
+FROM python:3.14-slim AS runtime
 
-RUN useradd -m -u 1000 gateway && \
-    chown -R gateway:gateway /app
+WORKDIR /app
+
+RUN useradd -m -u 1000 gateway && chown gateway:gateway /app
+
+COPY --from=builder --chown=gateway:gateway /app/.venv /app/.venv
+COPY --chown=gateway:gateway src ./src
+COPY --chown=gateway:gateway alembic ./alembic
+COPY --chown=gateway:gateway alembic.ini ./alembic.ini
 
 USER gateway
+
+ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 8000
 
@@ -23,4 +31,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENV GATEWAY_HOST=0.0.0.0
 ENV GATEWAY_PORT=8000
 
-CMD ["uv", "run", "gateway", "serve"]
+CMD ["gateway", "serve"]
