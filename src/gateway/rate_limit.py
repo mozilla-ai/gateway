@@ -59,7 +59,7 @@ class RateLimiter:
         if len(timestamps) >= self._rpm:
             oldest = timestamps[0]
             retry_after = math.ceil(oldest - cutoff)
-            record_rate_limit_hit(user_id)
+            record_rate_limit_hit()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Rate limit exceeded",

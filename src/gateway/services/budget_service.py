@@ -104,7 +104,7 @@ async def validate_user_budget(db: Session, user_id: str, model: str | None = No
                 if user.spend >= budget.max_budget:
                     if model and _is_model_free(db, model):
                         return user
-                    record_budget_exceeded(user_id)
+                    record_budget_exceeded()
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"User '{user_id}' has exceeded budget limit",

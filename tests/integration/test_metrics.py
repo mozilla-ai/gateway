@@ -17,9 +17,9 @@ from gateway.metrics import REGISTRY
 from .conftest import _run_alembic_migrations
 
 
-def _sample(name: str, labels: dict[str, str]) -> float:
+def _sample(name: str, labels: dict[str, str] | None = None) -> float:
     """Read a metric sample value from the registry, returning 0.0 if not found."""
-    return REGISTRY.get_sample_value(name, labels) or 0.0
+    return REGISTRY.get_sample_value(name, labels or {}) or 0.0
 
 
 def _make_metrics_client(
@@ -231,8 +231,7 @@ def test_cost_metric_recorded_with_pricing(metrics_client: TestClient) -> None:
 def test_rate_limit_hit_metric(metrics_rate_limit_client: TestClient) -> None:
     user_id = _create_user(metrics_rate_limit_client, user_id="rl-metric-user")
 
-    labels = {"user_id": user_id}
-    before = _sample("gateway_rate_limit_hits_total", labels)
+    before = _sample("gateway_rate_limit_hits_total")
 
     async def mock_acompletion(**kwargs: Any) -> None:
         msg = "short-circuit"
@@ -246,7 +245,7 @@ def test_rate_limit_hit_metric(metrics_rate_limit_client: TestClient) -> None:
         resp = _chat_request(metrics_rate_limit_client, user_id)
 
     assert resp.status_code == 429
-    assert _sample("gateway_rate_limit_hits_total", labels) - before >= 1.0
+    assert _sample("gateway_rate_limit_hits_total") - before >= 1.0
 
 
 def test_budget_exceeded_metric(metrics_client: TestClient) -> None:
@@ -269,13 +268,12 @@ def test_budget_exceeded_metric(metrics_client: TestClient) -> None:
     )
     assert user_resp.status_code == 200
 
-    labels = {"user_id": "budget-user"}
-    before = _sample("gateway_budget_exceeded_total", labels)
+    before = _sample("gateway_budget_exceeded_total")
 
     resp = _chat_request(metrics_client, "budget-user")
     assert resp.status_code == 403
 
-    assert _sample("gateway_budget_exceeded_total", labels) - before == 1.0
+    assert _sample("gateway_budget_exceeded_total") - before == 1.0
 
 
 def test_auth_failure_metric_missing_credentials(metrics_client: TestClient) -> None:

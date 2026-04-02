@@ -57,21 +57,19 @@ def test_record_cost_observes_histogram() -> None:
 
 
 def test_record_rate_limit_hit_increments_counter() -> None:
-    labels = {"user_id": "rl-unit-user"}
-    before = _sample("gateway_rate_limit_hits_total", labels)
+    before = _sample("gateway_rate_limit_hits_total")
 
-    record_rate_limit_hit("rl-unit-user")
+    record_rate_limit_hit()
 
-    assert _sample("gateway_rate_limit_hits_total", labels) - before == 1.0
+    assert _sample("gateway_rate_limit_hits_total") - before == 1.0
 
 
 def test_record_budget_exceeded_increments_counter() -> None:
-    labels = {"user_id": "budget-unit-user"}
-    before = _sample("gateway_budget_exceeded_total", labels)
+    before = _sample("gateway_budget_exceeded_total")
 
-    record_budget_exceeded("budget-unit-user")
+    record_budget_exceeded()
 
-    assert _sample("gateway_budget_exceeded_total", labels) - before == 1.0
+    assert _sample("gateway_budget_exceeded_total") - before == 1.0
 
 
 def test_record_auth_failure_increments_counter() -> None:
@@ -195,11 +193,10 @@ def test_rate_limiter_records_metric_on_429() -> None:
     limiter = RateLimiter(rpm=1)
     limiter.check("metric-rl-user")
 
-    labels = {"user_id": "metric-rl-user"}
-    before = _sample("gateway_rate_limit_hits_total", labels)
+    before = _sample("gateway_rate_limit_hits_total")
 
     with pytest.raises(HTTPException) as exc_info:
         limiter.check("metric-rl-user")
 
     assert exc_info.value.status_code == 429
-    assert _sample("gateway_rate_limit_hits_total", labels) - before == 1.0
+    assert _sample("gateway_rate_limit_hits_total") - before == 1.0

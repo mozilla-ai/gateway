@@ -57,14 +57,12 @@ REQUEST_COST_DOLLARS = Histogram(
 RATE_LIMIT_HITS = Counter(
     "gateway_rate_limit_hits",
     "Total number of rate limit hits",
-    ["user_id"],
     registry=REGISTRY,
 )
 
 BUDGET_EXCEEDED = Counter(
     "gateway_budget_exceeded",
     "Total number of budget exceeded events",
-    ["user_id"],
     registry=REGISTRY,
 )
 
@@ -134,14 +132,14 @@ def record_cost(provider: str, model: str, cost: float) -> None:
     REQUEST_COST_DOLLARS.labels(provider=provider, model=model).observe(cost)
 
 
-def record_rate_limit_hit(user_id: str) -> None:
+def record_rate_limit_hit() -> None:
     """Record a rate limit hit."""
-    RATE_LIMIT_HITS.labels(user_id=user_id).inc()
+    RATE_LIMIT_HITS.inc()
 
 
-def record_budget_exceeded(user_id: str) -> None:
+def record_budget_exceeded() -> None:
     """Record a budget exceeded event."""
-    BUDGET_EXCEEDED.labels(user_id=user_id).inc()
+    BUDGET_EXCEEDED.inc()
 
 
 def record_auth_failure(reason: str) -> None:
