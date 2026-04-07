@@ -20,11 +20,9 @@ def test_provider_error_does_not_leak_details(
         },
         headers=api_key_header,
     )
-    assert response.status_code == 500
+    assert response.status_code == 502
     detail = response.json()["detail"]
-    # Should not contain provider-specific error details
-    assert "api" not in detail.lower() or "provider" in detail.lower()
-    assert "could not be completed" in detail.lower()
+    assert detail == "LLM provider error"
 
 
 def test_health_readiness_does_not_leak_db_details(client: TestClient) -> None:

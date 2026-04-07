@@ -27,5 +27,5 @@ def test_streaming_creation_error_returns_http_error(
         headers=api_key_header,
     )
 
-    assert response.status_code == 500
-    assert "provider" in response.json()["detail"].lower()
+    assert response.status_code == 502
+    assert response.json() == {"detail": "LLM provider error"}

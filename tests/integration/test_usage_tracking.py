@@ -270,7 +270,7 @@ async def test_failed_request_logs_error(
         headers=api_key_header,
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 502
 
     engine = create_engine(test_config.database_url)
     session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)

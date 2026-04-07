@@ -1,4 +1,5 @@
 import secrets
+from collections.abc import Generator
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -201,11 +202,23 @@ async def verify_api_key_or_master_key(
     return api_key, False
 
 
+def get_db_if_needed(
+    config: Annotated[GatewayConfig, Depends(get_config)],
+) -> Generator[Session | None]:
+    """Get a database session in standalone mode, otherwise return None."""
+    if config.is_platform_mode:
+        yield None
+        return
+
+    yield from get_db()
+
+
 __all__ = [
     "get_config",
     "get_db",
     "reset_config",
     "set_config",
+    "get_db_if_needed",
     "verify_api_key",
     "verify_api_key_or_master_key",
     "verify_master_key",

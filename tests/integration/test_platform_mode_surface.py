@@ -21,7 +21,10 @@ def test_platform_mode_starts_without_database(monkeypatch: pytest.MonkeyPatch) 
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "mode": "platform"}
+    payload = response.json()
+    assert payload["status"] == "healthy"
+    assert payload["mode"] == "platform"
+    assert payload["platform_reachable"] in {"yes", "no"}
 
     reset_config()
     reset_db()
@@ -51,6 +54,57 @@ def test_platform_mode_disables_local_management_endpoints(monkeypatch: pytest.M
     assert budgets_response.json() == expected
     assert spend_response.status_code == 404
     assert spend_response.json() == expected
+
+    reset_config()
+    reset_db()
+
+
+def test_platform_mode_health_reports_reachability(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANY_LLM_PLATFORM_TOKEN", "gw_test_token")
+
+    async def _reachable(_: GatewayConfig) -> bool:
+        return True
+
+    monkeypatch.setattr("gateway.api.routes.health._check_platform_reachability", _reachable)
+
+    config = GatewayConfig(
+        mode="platform",
+        platform={"base_url": "http://localhost:8100/api/v1"},
+    )
+    app = create_app(config)
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+        readiness_response = client.get("/health/readiness")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy", "mode": "platform", "platform_reachable": "yes"}
+    assert readiness_response.status_code == 200
+    assert readiness_response.json()["platform"] == "connected"
+
+    reset_config()
+    reset_db()
+
+
+def test_platform_mode_readiness_fails_when_platform_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANY_LLM_PLATFORM_TOKEN", "gw_test_token")
+
+    async def _unreachable(_: GatewayConfig) -> bool:
+        return False
+
+    monkeypatch.setattr("gateway.api.routes.health._check_platform_reachability", _unreachable)
+
+    config = GatewayConfig(
+        mode="platform",
+        platform={"base_url": "http://localhost:8100/api/v1"},
+    )
+    app = create_app(config)
+
+    with TestClient(app) as client:
+        response = client.get("/health/readiness")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["platform"] == "unavailable"
 
     reset_config()
     reset_db()

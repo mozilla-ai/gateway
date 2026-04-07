@@ -148,6 +148,14 @@ def create_app(config: GatewayConfig) -> FastAPI:
 
     """
     config.validate_mode_selection()
+    if config.is_platform_mode:
+        if not config.platform.get("base_url"):
+            msg = "platform.base_url is required when platform mode is active"
+            raise ValueError(msg)
+        if config.providers:
+            msg = "Local provider credentials are not supported in platform mode"
+            raise ValueError(msg)
+
     set_config(config)
 
     if not config.is_platform_mode:

@@ -1,5 +1,6 @@
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 
@@ -9,6 +10,23 @@ from gateway.log_config import logger
 from gateway.version import __version__
 
 router = APIRouter(prefix="/health", tags=["health"])
+
+
+async def _check_platform_reachability(config: GatewayConfig) -> bool:
+    platform_base_url = config.platform.get("base_url")
+    if not platform_base_url:
+        return False
+
+    health_path = config.platform.get("health_path", "/utils/health-check/")
+    timeout_ms = int(config.platform.get("resolve_timeout_ms", 5000))
+    health_url = f"{platform_base_url.rstrip('/')}/{health_path.lstrip('/')}"
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_ms / 1000) as client:
+            response = await client.get(health_url)
+        return response.status_code < 500
+    except (httpx.TimeoutException, httpx.NetworkError):
+        return False
 
 
 @router.get("")
@@ -21,6 +39,7 @@ async def health_check(config: GatewayConfig = Depends(get_config)) -> dict[str,
     payload: dict[str, str] = {"status": "healthy"}
     if config.is_platform_mode:
         payload["mode"] = "platform"
+        payload["platform_reachable"] = "yes" if await _check_platform_reachability(config) else "no"
     return payload
 
 
@@ -57,9 +76,21 @@ async def health_readiness(config: GatewayConfig = Depends(get_config)) -> dict[
 
     """
     if config.is_platform_mode:
+        platform_reachable = await _check_platform_reachability(config)
+        if not platform_reachable:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "unhealthy",
+                    "mode": "platform",
+                    "platform": "unavailable",
+                    "version": __version__,
+                },
+            )
         return {
             "status": "healthy",
             "mode": "platform",
+            "platform": "connected",
             "version": __version__,
         }
 
