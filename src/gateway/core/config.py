@@ -92,7 +92,10 @@ class GatewayConfig(BaseSettings):
             raise ValueError(msg)
 
         if configured_mode == "standalone" and token_present:
-            msg = "ANY_LLM_PLATFORM_TOKEN is set but GATEWAY_MODE=standalone. Remove the token or switch to platform mode."
+            msg = (
+                "ANY_LLM_PLATFORM_TOKEN is set but GATEWAY_MODE=standalone. "
+                "Remove the token or switch to platform mode."
+            )
             raise ValueError(msg)
 
 
