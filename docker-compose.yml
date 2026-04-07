@@ -1,7 +1,7 @@
 services:
   gateway:
     # if pulling from Docker Hub, use the following instead, and comment out the build section:
-    image: docker.io/mzai/gateway:latest
+    image: docker.io/mozilla-ai/gateway:latest
 
     # If you want to use a different port, change it here and in the config.yml file.
     ports:
