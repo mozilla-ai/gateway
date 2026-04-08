@@ -99,10 +99,12 @@ def test_load_config_rejects_platform_mode_without_token(tmp_path: Path, monkeyp
         load_config(str(config_file))
 
 
-def test_load_config_rejects_conflicting_mode_and_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_prefers_platform_mode_when_token_is_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_file = tmp_path / "gateway.yml"
     config_file.write_text("mode: standalone\n", encoding="utf-8")
     monkeypatch.setenv("ANY_LLM_PLATFORM_TOKEN", "gw_test_token")
 
-    with pytest.raises(ValueError, match="GATEWAY_MODE=standalone"):
-        load_config(str(config_file))
+    config = load_config(str(config_file))
+
+    assert config.mode == "standalone"
+    assert config.is_platform_mode

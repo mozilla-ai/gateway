@@ -57,6 +57,29 @@ uv run gateway serve --config config.yml
 
 Open API docs at `http://localhost:8000/docs`.
 
+## Start in platform mode
+
+Platform mode is enabled automatically when `ANY_LLM_PLATFORM_TOKEN` is set.
+
+1) Export platform env vars:
+
+```bash
+export ANY_LLM_PLATFORM_TOKEN=gw_xxx
+export PLATFORM_BASE_URL=https://your-platform.example/api/v1
+```
+
+2) Start the gateway:
+
+```bash
+uv run gateway serve --config config.yml
+```
+
+Notes:
+
+- `GATEWAY_MODE` is optional; effective mode is derived from `ANY_LLM_PLATFORM_TOKEN`.
+- If you explicitly set `GATEWAY_MODE=platform`, startup fails unless `ANY_LLM_PLATFORM_TOKEN` is also set.
+- In platform mode, local `providers` configuration is not used.
+
 ## First request (OpenAI SDK)
 
 On startup, the gateway can bootstrap an API key in logs. Export it as `GATEWAY_API_KEY`, then call the gateway as an OpenAI-compatible server:
