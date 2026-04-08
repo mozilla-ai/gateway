@@ -91,13 +91,6 @@ class GatewayConfig(BaseSettings):
             msg = "GATEWAY_MODE=platform requires ANY_LLM_PLATFORM_TOKEN to be set."
             raise ValueError(msg)
 
-        if configured_mode == "standalone" and token_present:
-            msg = (
-                "ANY_LLM_PLATFORM_TOKEN is set but GATEWAY_MODE=standalone. "
-                "Remove the token or switch to platform mode."
-            )
-            raise ValueError(msg)
-
 
 def load_config(config_path: str | None = None) -> GatewayConfig:
     """Load configuration from file and environment variables.
