@@ -127,9 +127,23 @@ uv run pytest tests/unit/test_gateway_cli.py -v
 
 ## Docker
 
+The gateway image is published on [Docker Hub](https://hub.docker.com/r/mzdotai/gateway).
+
+### Run with docker compose (gateway + PostgreSQL)
+
 ```bash
 cp config.example.yml config.yml
-docker compose up --build
+docker compose up -d
+```
+
+### Run with docker only
+
+```bash
+docker run --rm \
+  -p 8000:8000 \
+  -v "$(pwd)/config.yml:/app/config.yml:ro" \
+  mzdotai/gateway:latest \
+  gateway serve --config /app/config.yml
 ```
 
 Gateway will be available at `http://localhost:8000`.
