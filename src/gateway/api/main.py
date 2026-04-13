@@ -10,6 +10,7 @@ from gateway.api.routes import (
     models,
     platform_mode,
     pricing,
+    responses,
     usage,
     users,
 )
@@ -25,6 +26,7 @@ def register_routers(app: FastAPI, config: GatewayConfig) -> None:
         return
 
     app.include_router(messages.router)
+    app.include_router(responses.router)
     app.include_router(embeddings.router)
     app.include_router(models.router)
     app.include_router(keys.router)
