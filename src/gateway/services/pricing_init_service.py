@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
 from gateway.models.entities import ModelPricing
+from gateway.services.pricing_service import normalize_effective_at
 
 
 async def initialize_pricing_from_config(config: GatewayConfig, db: AsyncSession) -> None:
@@ -32,14 +33,20 @@ async def initialize_pricing_from_config(config: GatewayConfig, db: AsyncSession
 
         input_price = pricing_config.input_price_per_million
         output_price = pricing_config.output_price_per_million
+        effective_at = normalize_effective_at(pricing_config.effective_at)
 
         existing_pricing = (
-            await db.execute(select(ModelPricing).where(ModelPricing.model_key == model_key))
+            await db.execute(
+                select(ModelPricing).where(
+                    ModelPricing.model_key == model_key,
+                    ModelPricing.effective_at == effective_at,
+                )
+            )
         ).scalar_one_or_none()
 
         if existing_pricing:
             logger.warning(
-                f"Pricing for model '{model_key}' already exists in database. "
+                f"Pricing for model '{model_key}' effective {effective_at.isoformat()} already exists in database. "
                 f"Keeping database value (input: ${existing_pricing.input_price_per_million}/M, "
                 f"output: ${existing_pricing.output_price_per_million}/M). "
                 f"To update, use the pricing API or delete the existing entry."
@@ -48,6 +55,7 @@ async def initialize_pricing_from_config(config: GatewayConfig, db: AsyncSession
 
         new_pricing = ModelPricing(
             model_key=model_key,
+            effective_at=effective_at,
             input_price_per_million=input_price,
             output_price_per_million=output_price,
         )
