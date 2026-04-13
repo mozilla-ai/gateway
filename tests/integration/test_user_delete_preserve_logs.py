@@ -1,8 +1,10 @@
 """Tests for preserving usage and budget reset logs when soft-deleting users."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
+from any_llm.types.completion import ChatCompletion, ChatCompletionMessage, Choice, CompletionUsage
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -83,9 +85,29 @@ def test_delete_user_preserves_budget_reset_logs(
     with (
         patch("gateway.services.budget_service.datetime") as mock_dt_budget,
         patch("gateway.api.routes.chat.datetime") as mock_dt_chat,
+        patch("gateway.api.routes.chat.acompletion") as mock_acompletion,
     ):
         mock_dt_budget.now.return_value = time_after_reset
         mock_dt_chat.now.return_value = time_after_reset
+        mock_response = ChatCompletion(
+            id="chatcmpl-reset",
+            object="chat.completion",
+            created=int(time_after_reset.timestamp()),
+            model=MODEL_NAME,
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(role="assistant", content="ok"),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+        )
+
+        async def _mock_acompletion(**kwargs: Any) -> ChatCompletion:  # type: ignore[name-defined]
+            return mock_response
+
+        mock_acompletion.side_effect = _mock_acompletion
         client.post(
             "/v1/chat/completions",
             json={"model": MODEL_NAME, "messages": test_messages, "user": "reset-user"},

@@ -1,25 +1,35 @@
 """Tests for timezone-aware datetime consistency."""
 
 import pytest
-from sqlalchemy.orm import Session
 
 from gateway.api.routes.chat import log_usage
 from gateway.models.entities import UsageLog
 
 
 @pytest.mark.asyncio
-async def test_usage_log_timestamp_is_timezone_aware(test_db: Session) -> None:
+async def test_usage_log_timestamp_is_timezone_aware(async_db) -> None:
     """Test that usage log timestamps are stored with timezone info."""
+
+    class _Writer:
+        def __init__(self) -> None:
+            self.logs: list[UsageLog] = []
+
+        async def put(self, log: UsageLog) -> None:
+            self.logs.append(log)
+
+    writer = _Writer()
     await log_usage(
-        db=test_db,
-        api_key_obj=None,
+        db=async_db,
+        log_writer=writer,
+        api_key_id=None,
         model="gpt-4o",
         provider="openai",
         endpoint="/v1/chat/completions",
         error="test error",
     )
 
-    log = test_db.query(UsageLog).first()
+    assert writer.logs
+    log = writer.logs[0]
     assert log is not None
     assert log.timestamp is not None
     # The timestamp should be timezone-aware (has tzinfo)

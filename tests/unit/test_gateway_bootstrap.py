@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,10 @@ from gateway.main import create_app
 def test_create_app_bootstraps_first_api_key(tmp_path: Path) -> None:
     database_path = tmp_path / "bootstrap.db"
     config = GatewayConfig(database_url=f"sqlite:///{database_path}")
-    create_app(config)
+    app = create_app(config)
+
+    with TestClient(app):
+        pass
 
     engine = create_engine(config.database_url)
     with Session(engine) as db:
@@ -31,8 +35,13 @@ def test_create_app_does_not_create_second_bootstrap_key(tmp_path: Path) -> None
     database_path = tmp_path / "bootstrap-once.db"
     config = GatewayConfig(database_url=f"sqlite:///{database_path}")
 
-    create_app(config)
-    create_app(config)
+    app = create_app(config)
+    with TestClient(app):
+        pass
+    # Second startup should not create another key
+    app_again = create_app(config)
+    with TestClient(app_again):
+        pass
 
     engine = create_engine(config.database_url)
     with Session(engine) as db:
@@ -46,7 +55,9 @@ def test_create_app_skips_bootstrap_when_disabled(tmp_path: Path) -> None:
     database_path = tmp_path / "no-bootstrap.db"
     config = GatewayConfig(database_url=f"sqlite:///{database_path}", bootstrap_api_key=False)
 
-    create_app(config)
+    app = create_app(config)
+    with TestClient(app):
+        pass
 
     engine = create_engine(config.database_url)
     with Session(engine) as db:

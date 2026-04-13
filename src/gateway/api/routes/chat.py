@@ -15,18 +15,18 @@ from any_llm.types.completion import (
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.api.deps import get_config, get_db_if_needed, verify_api_key_or_master_key
+from gateway.api.deps import get_config, get_db_if_needed, get_log_writer, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.auth.vertex_auth import setup_vertex_environment
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
 from gateway.metrics import record_cost, record_tokens
-from gateway.models.entities import APIKey, UsageLog, User
+from gateway.models.entities import APIKey, UsageLog
 from gateway.rate_limit import RateLimitInfo, check_rate_limit
 from gateway.services.budget_service import validate_user_budget
+from gateway.services.log_writer import LogWriter
 from gateway.services.pricing_service import find_model_pricing
 from gateway.streaming import OPENAI_STREAM_FORMAT, streaming_generator
 
@@ -111,8 +111,9 @@ def get_provider_kwargs(
 
 
 async def log_usage(
-    db: Session,
-    api_key_obj: APIKey | None,
+    db: AsyncSession,
+    log_writer: LogWriter,
+    api_key_id: str | None,
     model: str,
     provider: str | None,
     endpoint: str,
@@ -125,7 +126,7 @@ async def log_usage(
 
     Args:
         db: Database session
-        api_key_obj: API key object (None if using master key)
+        api_key_id: API key identifier (None if using master key)
         model: Model name
         provider: Provider name
         endpoint: Endpoint path
@@ -137,7 +138,7 @@ async def log_usage(
     """
     usage_log = UsageLog(
         id=str(uuid.uuid4()),
-        api_key_id=api_key_obj.id if api_key_obj else None,
+        api_key_id=api_key_id,
         user_id=user_id,
         timestamp=datetime.now(UTC),
         model=model,
@@ -163,28 +164,18 @@ async def log_usage(
             usage_data.completion_tokens,
         )
 
-        pricing = find_model_pricing(db, provider, model)
-        if pricing:
-            cost = (usage_data.prompt_tokens / 1_000_000) * pricing.input_price_per_million + (
-                usage_data.completion_tokens / 1_000_000
-            ) * pricing.output_price_per_million
-            usage_log.cost = cost
-            record_cost(str(provider or ""), model, cost)
+    pricing = await find_model_pricing(db, provider, model)
+    if pricing:
+        cost = (usage_data.prompt_tokens / 1_000_000) * pricing.input_price_per_million + (
+            usage_data.completion_tokens / 1_000_000
+        ) * pricing.output_price_per_million
+        usage_log.cost = cost
+        record_cost(str(provider or ""), model, cost)
+    else:
+        model_ref = f"{provider}:{model}" if provider else model
+        logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
 
-            if user_id:
-                db.query(User).filter(User.user_id == user_id, User.deleted_at.is_(None)).update(
-                    {User.spend: User.spend + cost}
-                )
-        else:
-            model_ref = f"{provider}:{model}" if provider else model
-            logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
-
-    try:
-        db.add(usage_log)
-        db.commit()
-    except SQLAlchemyError as e:
-        logger.error("Failed to log usage to database: %s", e)
-        db.rollback()
+    await log_writer.put(usage_log)
 
 
 def _extract_platform_user_token(request: Request) -> str:
@@ -358,8 +349,9 @@ async def chat_completions(
     response: Response,
     background_tasks: BackgroundTasks,
     request: ChatCompletionRequest,
-    db: Annotated[Session | None, Depends(get_db_if_needed)],
+    db: Annotated[AsyncSession | None, Depends(get_db_if_needed)],
     config: Annotated[GatewayConfig, Depends(get_config)],
+    log_writer: Annotated[LogWriter, Depends(get_log_writer)],
 ) -> ChatCompletion | StreamingResponse:
     """OpenAI-compatible chat completions endpoint.
 
@@ -378,6 +370,7 @@ async def chat_completions(
         )
 
     api_key: APIKey | None = None
+    api_key_id: str | None = None
     user_id: str | None = None
     rate_limit_info: RateLimitInfo | None = None
     platform_mode = config.is_platform_mode
@@ -412,6 +405,7 @@ async def chat_completions(
             )
 
         api_key, is_master_key = await verify_api_key_or_master_key(raw_request, db, config)
+        api_key_id = api_key.id if api_key else None
         user_id = resolve_user_id(
             user_id_from_request=request.user,
             api_key=api_key,
@@ -431,7 +425,9 @@ async def chat_completions(
         )
 
         rate_limit_info = check_rate_limit(raw_request, user_id)
-        _ = await validate_user_budget(db, user_id, request.model)
+        _ = await validate_user_budget(db, user_id, request.model, strategy=config.budget_strategy)
+        if config.budget_strategy == "for_update":
+            await db.rollback()
         provider, model = AnyLLM.split_model_provider(request.model)
         provider_kwargs = get_provider_kwargs(config, provider)
 
@@ -475,15 +471,16 @@ async def chat_completions(
                 if db is None:
                     return
 
-                await log_usage(
-                    db=db,
-                    api_key_obj=api_key,
-                    model=model,
-                    provider=provider,
-                    endpoint="/v1/chat/completions",
-                    user_id=user_id,
-                    usage_override=usage_data,
-                )
+                    await log_usage(
+                        db=db,
+                        log_writer=log_writer,
+                        api_key_id=api_key_id,
+                        model=model,
+                        provider=provider,
+                        endpoint="/v1/chat/completions",
+                        user_id=user_id,
+                        usage_override=usage_data,
+                    )
 
             async def _on_error(error: str) -> None:
                 if platform_mode and correlation_id:
@@ -500,15 +497,16 @@ async def chat_completions(
                 if db is None:
                     return
 
-                await log_usage(
-                    db=db,
-                    api_key_obj=api_key,
-                    model=model,
-                    provider=provider,
-                    endpoint="/v1/chat/completions",
-                    user_id=user_id,
-                    error=error,
-                )
+                    await log_usage(
+                        db=db,
+                        log_writer=log_writer,
+                        api_key_id=api_key_id,
+                        model=model,
+                        provider=provider,
+                        endpoint="/v1/chat/completions",
+                        user_id=user_id,
+                        error=error,
+                    )
 
             stream: AsyncIterator[ChatCompletionChunk] = await acompletion(**completion_kwargs)  # type: ignore[assignment]
             rl_headers = rate_limit_headers(rate_limit_info) if rate_limit_info else {}
@@ -539,7 +537,8 @@ async def chat_completions(
         elif db is not None:
             await log_usage(
                 db=db,
-                api_key_obj=api_key,
+                log_writer=log_writer,
+                api_key_id=api_key_id,
                 model=model,
                 provider=provider,
                 endpoint="/v1/chat/completions",
@@ -561,7 +560,8 @@ async def chat_completions(
         elif db is not None:
             await log_usage(
                 db=db,
-                api_key_obj=api_key,
+                log_writer=log_writer,
+                api_key_id=api_key_id,
                 model=model,
                 provider=provider,
                 endpoint="/v1/chat/completions",

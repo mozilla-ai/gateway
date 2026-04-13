@@ -36,6 +36,25 @@ class GatewayConfig(BaseSettings):
         default=True,
         description="Automatically run database migrations on startup",
     )
+    db_pool_size: int = Field(
+        default=10,
+        ge=1,
+        description="Number of persistent connections in the DB pool per worker.",
+    )
+    db_max_overflow: int = Field(
+        default=20,
+        ge=0,
+        description="Extra connections the pool can open above db_pool_size during bursts.",
+    )
+    db_pool_timeout: float = Field(
+        default=30.0,
+        ge=0,
+        description="Seconds to wait for an available connection before raising TimeoutError.",
+    )
+    db_pool_recycle: int = Field(
+        default=-1,
+        description="Recycle connections older than this many seconds. -1 disables.",
+    )
     host: str = Field(default="0.0.0.0", description="Host to bind the server to")  # noqa: S104
     port: int = Field(default=8000, description="Port to bind the server to")
     master_key: str | None = Field(default=None, description="Master key for protecting management endpoints")
@@ -65,6 +84,14 @@ class GatewayConfig(BaseSettings):
     bootstrap_api_key: bool = Field(
         default=True,
         description="Create a first-use API key on startup when no API keys exist",
+    )
+    log_writer_strategy: str = Field(
+        default="single",
+        description="How usage log rows are written: 'single' (inline) or 'batch' (background).",
+    )
+    budget_strategy: str = Field(
+        default="for_update",
+        description="Budget validation strategy: 'for_update' (default), 'cas' (lock-free), or 'disabled'.",
     )
     mode: str = Field(default="standalone", description="Gateway operating mode: standalone or platform")
     platform: dict[str, Any] = Field(default_factory=dict, description="Platform integration settings")

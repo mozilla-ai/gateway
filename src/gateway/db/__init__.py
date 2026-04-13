@@ -1,4 +1,4 @@
-from gateway.core.database import get_db, init_db, reset_db
+from gateway.core.database import create_session, get_db, init_db, reset_db
 from gateway.models.entities import (
     APIKey,
     Base,
@@ -19,6 +19,7 @@ __all__ = [
     "UsageLog",
     "User",
     "get_active_user",
+    "create_session",
     "get_db",
     "init_db",
     "reset_db",

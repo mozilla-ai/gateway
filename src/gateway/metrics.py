@@ -73,6 +73,33 @@ AUTH_FAILURES = Counter(
     registry=REGISTRY,
 )
 
+LOG_WRITER_QUEUE_DEPTH = Gauge(
+    "gateway_usage_log_queue_depth",
+    "Number of usage log entries waiting to be written",
+    registry=REGISTRY,
+)
+
+LOG_WRITER_BATCH_SIZE = Histogram(
+    "gateway_usage_log_batch_size",
+    "Number of rows per flush batch",
+    ["writer"],
+    registry=REGISTRY,
+)
+
+LOG_WRITER_FLUSH_DURATION = Histogram(
+    "gateway_usage_log_flush_duration_seconds",
+    "Time spent flushing usage log batches",
+    ["writer", "result"],
+    registry=REGISTRY,
+)
+
+LOG_WRITER_ROWS = Counter(
+    "gateway_usage_log_rows",
+    "Total usage log rows by outcome",
+    ["writer", "result"],
+    registry=REGISTRY,
+)
+
 
 _PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
@@ -145,3 +172,9 @@ def record_budget_exceeded() -> None:
 def record_auth_failure(reason: str) -> None:
     """Record an authentication failure."""
     AUTH_FAILURES.labels(reason=reason).inc()
+
+
+log_writer_queue_depth = LOG_WRITER_QUEUE_DEPTH
+log_writer_batch_size = LOG_WRITER_BATCH_SIZE
+log_writer_flush_duration = LOG_WRITER_FLUSH_DURATION
+log_writer_rows = LOG_WRITER_ROWS

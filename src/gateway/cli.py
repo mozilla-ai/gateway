@@ -130,7 +130,7 @@ def init_db(config: str | None, database_url: str | None) -> None:
 
     click.echo(f"Initializing database: {gateway_config.database_url}")
 
-    db_init(gateway_config.database_url)
+    db_init(gateway_config)
 
     click.echo("Database initialized successfully!")
 

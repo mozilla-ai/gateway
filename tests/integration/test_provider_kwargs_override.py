@@ -8,14 +8,13 @@ import pytest
 from any_llm import LLMProvider
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
 
 from gateway.api.routes.chat import get_provider_kwargs
 from gateway.core.config import GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
 
-from .conftest import _run_alembic_migrations
+from .conftest import _run_alembic_migrations, build_async_session_override
 
 
 class _MockCompletionError(Exception):
@@ -46,21 +45,14 @@ def client_with_model_in_provider(config_with_model_in_provider: GatewayConfig) 
     _run_alembic_migrations(config_with_model_in_provider.database_url)
     engine = create_engine(config_with_model_in_provider.database_url, pool_pre_ping=True)
     app = create_app(config_with_model_in_provider)
-
-    def override_get_db() -> Generator[Session]:
-        testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db = testing_session_local()
-        try:
-            yield db
-        finally:
-            db.close()
-
+    override_get_db, dispose_override = build_async_session_override(config_with_model_in_provider.database_url)
     app.dependency_overrides[get_db] = override_get_db
 
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
+        dispose_override()
         Base.metadata.drop_all(bind=engine)
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))

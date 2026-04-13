@@ -8,17 +8,17 @@ from any_llm import AnyLLM, aembedding
 from any_llm.types.completion import CreateEmbeddingResponse
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
+from gateway.api.deps import get_config, get_db, get_log_writer, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.api.routes.chat import get_provider_kwargs, rate_limit_headers
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
-from gateway.models.entities import APIKey, UsageLog, User
+from gateway.models.entities import APIKey, UsageLog
 from gateway.rate_limit import check_rate_limit
 from gateway.services.budget_service import validate_user_budget
+from gateway.services.log_writer import LogWriter
 from gateway.services.pricing_service import find_model_pricing
 
 router = APIRouter(prefix="/v1", tags=["embeddings"])
@@ -39,11 +39,10 @@ async def create_embedding(
     raw_request: Request,
     response: Response,
     request: EmbeddingRequest,
-    auth_result: Annotated[
-        tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)
-    ],
-    db: Annotated[Session, Depends(get_db)],
+    auth_result: Annotated[tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     config: Annotated[GatewayConfig, Depends(get_config)],
+    log_writer: Annotated[LogWriter, Depends(get_log_writer)],
 ) -> CreateEmbeddingResponse:
     """OpenAI-compatible embeddings endpoint.
 
@@ -53,6 +52,7 @@ async def create_embedding(
     - API key without user field: Use virtual user created with API key
     """
     api_key, is_master_key = auth_result
+    api_key_id = api_key.id if api_key else None
 
     user_id = resolve_user_id(
         user_id_from_request=request.user,
@@ -74,7 +74,9 @@ async def create_embedding(
 
     rate_limit_info = check_rate_limit(raw_request, user_id)
 
-    _ = await validate_user_budget(db, user_id, request.model)
+    _ = await validate_user_budget(db, user_id, request.model, strategy=config.budget_strategy)
+    if config.budget_strategy == "for_update":
+        await db.rollback()
 
     provider, model = AnyLLM.split_model_provider(request.model)
 
@@ -96,7 +98,7 @@ async def create_embedding(
 
         usage_log = UsageLog(
             id=str(uuid.uuid4()),
-            api_key_id=api_key.id if api_key else None,
+            api_key_id=api_key_id,
             user_id=user_id,
             timestamp=datetime.now(UTC),
             model=model,
@@ -109,35 +111,22 @@ async def create_embedding(
         )
 
         if result.usage:
-            pricing = find_model_pricing(db, provider, model)
+            pricing = await find_model_pricing(db, provider, model)
             if pricing:
-                cost = (
-                    result.usage.prompt_tokens / 1_000_000
-                ) * pricing.input_price_per_million
+                cost = (result.usage.prompt_tokens / 1_000_000) * pricing.input_price_per_million
                 usage_log.cost = cost
-
-                db.query(User).filter(
-                    User.user_id == user_id, User.deleted_at.is_(None)
-                ).update({User.spend: User.spend + cost})
             else:
                 model_ref = f"{provider}:{model}" if provider else model
-                logger.warning(
-                    f"No pricing configured for '{model_ref}'. Usage will be tracked without cost."
-                )
+                logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
 
-        try:
-            db.add(usage_log)
-            db.commit()
-        except SQLAlchemyError as e:
-            logger.error("Failed to log usage to database: %s", e)
-            db.rollback()
+        await log_writer.put(usage_log)
 
     except HTTPException:
         raise
     except Exception as e:
         error_log = UsageLog(
             id=str(uuid.uuid4()),
-            api_key_id=api_key.id if api_key else None,
+            api_key_id=api_key_id,
             user_id=user_id,
             timestamp=datetime.now(UTC),
             model=model,
@@ -146,12 +135,7 @@ async def create_embedding(
             status="error",
             error_message=str(e),
         )
-        try:
-            db.add(error_log)
-            db.commit()
-        except SQLAlchemyError as log_err:
-            logger.error("Failed to log usage to database: %s", log_err)
-            db.rollback()
+        await log_writer.put(error_log)
 
         logger.error("Provider call failed for %s:%s: %s", provider, model, e)
         raise HTTPException(

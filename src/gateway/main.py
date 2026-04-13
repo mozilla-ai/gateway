@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -7,9 +9,10 @@ from typing_extensions import override
 from gateway.api.deps import set_config
 from gateway.api.main import register_routers
 from gateway.core.config import GatewayConfig
-from gateway.core.database import get_db, init_db
+from gateway.core.database import create_session, init_db
 from gateway.rate_limit import RateLimiter
 from gateway.services.bootstrap_service import bootstrap_first_api_key
+from gateway.services.log_writer import LogWriter, NoopLogWriter, create_log_writer
 from gateway.services.pricing_init_service import initialize_pricing_from_config
 from gateway.version import __version__
 
@@ -137,36 +140,47 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def create_app(config: GatewayConfig) -> FastAPI:
-    """Create and configure FastAPI application.
-
-    Args:
-        config: Gateway configuration
-
-    Returns:
-        Configured FastAPI application
-
-    """
+def _validate_platform_config(config: GatewayConfig) -> None:
     config.validate_mode_selection()
-    if config.is_platform_mode:
-        if not config.platform.get("base_url"):
-            msg = "platform.base_url is required when platform mode is active"
-            raise ValueError(msg)
-        if config.providers:
-            msg = "Local provider credentials are not supported in platform mode"
-            raise ValueError(msg)
-
-    set_config(config)
-
     if not config.is_platform_mode:
-        init_db(config.database_url, auto_migrate=config.auto_migrate)
+        return
+    if not config.platform.get("base_url"):
+        msg = "platform.base_url is required when platform mode is active"
+        raise ValueError(msg)
+    if config.providers:
+        msg = "Local provider credentials are not supported in platform mode"
+        raise ValueError(msg)
 
-        db = next(get_db())
+
+def _create_lifespan(config: GatewayConfig):  # noqa: ANN201 - FastAPI contract
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        log_writer: LogWriter
+        if config.is_platform_mode:
+            log_writer = NoopLogWriter()
+        else:
+            init_db(config)
+            async with create_session() as session:
+                await bootstrap_first_api_key(config, session)
+                await initialize_pricing_from_config(config, session)
+            log_writer = create_log_writer(config.log_writer_strategy)
+
+        await log_writer.start()
+        app.state.log_writer = log_writer
+
         try:
-            bootstrap_first_api_key(config, db)
-            initialize_pricing_from_config(config, db)
+            yield
         finally:
-            db.close()
+            await log_writer.stop()
+
+    return lifespan
+
+
+def create_app(config: GatewayConfig) -> FastAPI:
+    """Create and configure FastAPI application."""
+
+    _validate_platform_config(config)
+    set_config(config)
 
     app = FastAPI(
         title="any-llm-gateway",
@@ -175,6 +189,7 @@ def create_app(config: GatewayConfig) -> FastAPI:
         docs_url="/docs" if config.enable_docs else None,
         redoc_url="/redoc" if config.enable_docs else None,
         openapi_url="/openapi.json" if config.enable_docs else None,
+        lifespan=_create_lifespan(config),
     )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

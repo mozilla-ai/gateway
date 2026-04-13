@@ -13,6 +13,8 @@ from gateway.db import ModelPricing, get_db
 from gateway.main import create_app
 from gateway.models.entities import UsageLog
 
+from .conftest import build_async_session_override
+
 
 def test_pricing_loaded_from_config(postgres_url: str, test_db: Session) -> None:
     """Test that pricing is loaded from config file on startup."""
@@ -35,24 +37,24 @@ def test_pricing_loaded_from_config(postgres_url: str, test_db: Session) -> None
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app):
-        # Check GPT-4 pricing
-        pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
-        assert pricing is not None, "GPT-4 pricing should be loaded from config"
-        assert pricing.input_price_per_million == 30.0
-        assert pricing.output_price_per_million == 60.0
+    try:
+        with TestClient(app):
+            # Check GPT-4 pricing
+            pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
+            assert pricing is not None, "GPT-4 pricing should be loaded from config"
+            assert pricing.input_price_per_million == 30.0
+            assert pricing.output_price_per_million == 60.0
 
-        # Check GPT-3.5 pricing
-        pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-3.5-turbo").first()
-        assert pricing is not None, "GPT-3.5-turbo pricing should be loaded from config"
-        assert pricing.input_price_per_million == 0.5
-        assert pricing.output_price_per_million == 1.5
+            # Check GPT-3.5 pricing
+            pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-3.5-turbo").first()
+            assert pricing is not None, "GPT-3.5-turbo pricing should be loaded from config"
+            assert pricing.input_price_per_million == 0.5
+            assert pricing.output_price_per_million == 1.5
+    finally:
+        dispose_override()
 
 
 def test_database_pricing_takes_precedence(postgres_url: str, test_db: Session) -> None:
@@ -82,22 +84,22 @@ def test_database_pricing_takes_precedence(postgres_url: str, test_db: Session) 
 
     # Create app (which loads config pricing)
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app):
-        # Check that database pricing was preserved
-        pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
-        assert pricing is not None
-        # Should keep database values, not config values
-        assert pricing.input_price_per_million == 25.0
-        assert pricing.output_price_per_million == 50.0
+    try:
+        with TestClient(app):
+            # Check that database pricing was preserved
+            pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
+            assert pricing is not None
+            # Should keep database values, not config values
+            assert pricing.input_price_per_million == 25.0
+            assert pricing.output_price_per_million == 50.0
+    finally:
+        dispose_override()
 
 
-def test_pricing_validation_requires_configured_provider(postgres_url: str, test_db: Session) -> None:
+def test_pricing_validation_requires_configured_provider(postgres_url: str) -> None:
     """Test that pricing initialization fails if provider is not configured."""
     # Config with pricing for a provider that's not in providers list
     config = GatewayConfig(
@@ -115,8 +117,11 @@ def test_pricing_validation_requires_configured_provider(postgres_url: str, test
     )
 
     # Should raise ValueError when trying to initialize pricing
+    app = create_app(config)
+
     with pytest.raises(ValueError, match="provider 'anthropic' is not configured"):
-        create_app(config)
+        with TestClient(app):
+            pass
 
 
 def test_pricing_loaded_from_config_normalizes_legacy_slash_format(postgres_url: str, test_db: Session) -> None:
@@ -136,21 +141,21 @@ def test_pricing_loaded_from_config_normalizes_legacy_slash_format(postgres_url:
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app):
-        # Pricing should be stored with canonical colon format, not slash
-        pricing_slash = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai/gpt-4").first()
-        assert pricing_slash is None, "Pricing should not be stored with legacy slash format"
+    try:
+        with TestClient(app):
+            # Pricing should be stored with canonical colon format, not slash
+            pricing_slash = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai/gpt-4").first()
+            assert pricing_slash is None, "Pricing should not be stored with legacy slash format"
 
-        pricing_colon = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
-        assert pricing_colon is not None, "Pricing should be stored with canonical colon format"
-        assert pricing_colon.input_price_per_million == 30.0
-        assert pricing_colon.output_price_per_million == 60.0
+            pricing_colon = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
+            assert pricing_colon is not None, "Pricing should be stored with canonical colon format"
+            assert pricing_colon.input_price_per_million == 30.0
+            assert pricing_colon.output_price_per_million == 60.0
+    finally:
+        dispose_override()
 
 
 def test_set_pricing_api_normalizes_legacy_slash_format(
@@ -184,73 +189,90 @@ def test_pricing_initialization_with_no_config(postgres_url: str, test_db: Sessi
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app):
-        # App should start successfully
-        # No pricing should be in database
-        pricing_count = test_db.query(ModelPricing).count()
-        assert pricing_count == 0, "No pricing should be loaded when config is empty"
+    try:
+        with TestClient(app):
+            # App should start successfully
+            # No pricing should be in database
+            pricing_count = test_db.query(ModelPricing).count()
+            assert pricing_count == 0, "No pricing should be loaded when config is empty"
+    finally:
+        dispose_override()
 
 
 @pytest.mark.asyncio
-async def test_log_usage_finds_pricing_with_legacy_slash_format(test_db: Session) -> None:
-    """Test that _log_usage falls back to legacy slash format when colon format is not found."""
-    # Simulate pricing stored with legacy slash format (e.g., from before normalization fix)
+async def test_log_usage_finds_pricing_with_legacy_slash_format(async_db) -> None:
+    """Test that log_usage falls back to legacy slash format when colon format is absent."""
+
+    class _Writer:
+        def __init__(self) -> None:
+            self.logs: list[UsageLog] = []
+
+        async def put(self, log: UsageLog) -> None:
+            self.logs.append(log)
+
     legacy_pricing = ModelPricing(
         model_key="openai/gpt-4",
         input_price_per_million=30.0,
         output_price_per_million=60.0,
     )
-    test_db.add(legacy_pricing)
-    test_db.commit()
+    async_db.add(legacy_pricing)
+    await async_db.commit()
 
     usage = CompletionUsage(prompt_tokens=1000, completion_tokens=500, total_tokens=1500)
+    writer = _Writer()
 
     await log_usage(
-        db=test_db,
-        api_key_obj=None,
+        db=async_db,
+        log_writer=writer,
+        api_key_id=None,
         model="gpt-4",
         provider="openai",
         endpoint="/v1/chat/completions",
         usage_override=usage,
     )
 
-    log = test_db.query(UsageLog).first()
-    assert log is not None
-    assert log.cost is not None, "Cost should be calculated via legacy slash format fallback"
+    assert len(writer.logs) == 1
+    log = writer.logs[0]
     expected_cost = (1000 / 1_000_000) * 30.0 + (500 / 1_000_000) * 60.0
-    assert abs(log.cost - expected_cost) < 0.0001
+    assert log.cost == pytest.approx(expected_cost)
 
 
 @pytest.mark.asyncio
-async def test_log_usage_finds_pricing_with_colon_format(test_db: Session) -> None:
-    """Test that _log_usage finds pricing with canonical colon format."""
+async def test_log_usage_finds_pricing_with_colon_format(async_db) -> None:
+    """Test that log_usage uses canonical colon pricing when available."""
+
+    class _Writer:
+        def __init__(self) -> None:
+            self.logs: list[UsageLog] = []
+
+        async def put(self, log: UsageLog) -> None:
+            self.logs.append(log)
+
     pricing = ModelPricing(
         model_key="openai:gpt-4",
         input_price_per_million=30.0,
         output_price_per_million=60.0,
     )
-    test_db.add(pricing)
-    test_db.commit()
+    async_db.add(pricing)
+    await async_db.commit()
 
     usage = CompletionUsage(prompt_tokens=1000, completion_tokens=500, total_tokens=1500)
+    writer = _Writer()
 
     await log_usage(
-        db=test_db,
-        api_key_obj=None,
+        db=async_db,
+        log_writer=writer,
+        api_key_id=None,
         model="gpt-4",
         provider="openai",
         endpoint="/v1/chat/completions",
         usage_override=usage,
     )
 
-    log = test_db.query(UsageLog).first()
-    assert log is not None
-    assert log.cost is not None, "Cost should be calculated with canonical colon format"
+    assert len(writer.logs) == 1
+    log = writer.logs[0]
     expected_cost = (1000 / 1_000_000) * 30.0 + (500 / 1_000_000) * 60.0
-    assert abs(log.cost - expected_cost) < 0.0001
+    assert log.cost == pytest.approx(expected_cost)

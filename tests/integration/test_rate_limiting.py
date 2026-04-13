@@ -7,13 +7,12 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
 
 from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.db import Base, get_db
 from gateway.main import create_app
 
-from .conftest import _run_alembic_migrations
+from .conftest import _run_alembic_migrations, build_async_session_override
 
 
 class _MockCompletionError(Exception):
@@ -35,23 +34,14 @@ def _make_rate_limit_client(
     _run_alembic_migrations(postgres_url)
     engine = create_engine(postgres_url, pool_pre_ping=True)
     app = create_app(config)
-
-    def override_get_db() -> Generator[Session]:
-        testing_session_local = sessionmaker(
-            autocommit=False, autoflush=False, bind=engine
-        )
-        db = testing_session_local()
-        try:
-            yield db
-        finally:
-            db.close()
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
+        dispose_override()
         Base.metadata.drop_all(bind=engine)
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
@@ -70,17 +60,13 @@ def no_rate_limit_client(postgres_url: str) -> Generator[TestClient]:
 
 def _create_test_user(client: TestClient, master_key: str = "test-master-key") -> str:
     header = {API_KEY_HEADER: f"Bearer {master_key}"}
-    resp = client.post(
-        "/v1/users", json={"user_id": "rl-test-user", "alias": "RL"}, headers=header
-    )
+    resp = client.post("/v1/users", json={"user_id": "rl-test-user", "alias": "RL"}, headers=header)
     assert resp.status_code == 200
     result: str = resp.json()["user_id"]
     return result
 
 
-def _chat_request(
-    client: TestClient, user_id: str, master_key: str = "test-master-key"
-) -> Any:
+def _chat_request(client: TestClient, user_id: str, master_key: str = "test-master-key") -> Any:
     header = {API_KEY_HEADER: f"Bearer {master_key}"}
     return client.post(
         "/v1/chat/completions",

@@ -9,6 +9,8 @@ from gateway.core.config import GatewayConfig
 from gateway.db import get_db
 from gateway.main import create_app
 
+from .conftest import build_async_session_override
+
 
 def test_cors_disabled_by_default(postgres_url: str, test_db: Session) -> None:
     """Test that CORS middleware is not added when cors_allow_origins is empty."""
@@ -20,16 +22,16 @@ def test_cors_disabled_by_default(postgres_url: str, test_db: Session) -> None:
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as client:
-        response = client.get("/health", headers={"Origin": "https://evil.com"})
-        assert response.status_code == 200
-        assert "access-control-allow-origin" not in response.headers
+    try:
+        with TestClient(app) as client:
+            response = client.get("/health", headers={"Origin": "https://evil.com"})
+            assert response.status_code == 200
+            assert "access-control-allow-origin" not in response.headers
+    finally:
+        dispose_override()
 
 
 def test_cors_with_specific_origins(postgres_url: str, test_db: Session) -> None:
@@ -43,23 +45,23 @@ def test_cors_with_specific_origins(postgres_url: str, test_db: Session) -> None
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as client:
-        # Trusted origin should get CORS headers
-        response = client.get("/health", headers={"Origin": "https://trusted.com"})
-        assert response.status_code == 200
-        assert response.headers.get("access-control-allow-origin") == "https://trusted.com"
-        assert response.headers.get("access-control-allow-credentials") == "true"
+    try:
+        with TestClient(app) as client:
+            # Trusted origin should get CORS headers
+            response = client.get("/health", headers={"Origin": "https://trusted.com"})
+            assert response.status_code == 200
+            assert response.headers.get("access-control-allow-origin") == "https://trusted.com"
+            assert response.headers.get("access-control-allow-credentials") == "true"
 
-        # Untrusted origin should not get CORS headers
-        response = client.get("/health", headers={"Origin": "https://evil.com"})
-        assert response.status_code == 200
-        assert response.headers.get("access-control-allow-origin") != "https://evil.com"
+            # Untrusted origin should not get CORS headers
+            response = client.get("/health", headers={"Origin": "https://evil.com"})
+            assert response.status_code == 200
+            assert response.headers.get("access-control-allow-origin") != "https://evil.com"
+    finally:
+        dispose_override()
 
 
 def test_cors_wildcard_disables_credentials(postgres_url: str, test_db: Session) -> None:
@@ -73,15 +75,15 @@ def test_cors_wildcard_disables_credentials(postgres_url: str, test_db: Session)
     )
 
     app = create_app(config)
-
-    def override_get_db() -> Any:
-        yield test_db
-
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as client:
-        response = client.get("/health", headers={"Origin": "https://any-site.com"})
-        assert response.status_code == 200
-        assert response.headers.get("access-control-allow-origin") == "*"
-        # Credentials should NOT be allowed with wildcard
-        assert response.headers.get("access-control-allow-credentials") != "true"
+    try:
+        with TestClient(app) as client:
+            response = client.get("/health", headers={"Origin": "https://any-site.com"})
+            assert response.status_code == 200
+            assert response.headers.get("access-control-allow-origin") == "*"
+            # Credentials should NOT be allowed with wildcard
+            assert response.headers.get("access-control-allow-credentials") != "true"
+    finally:
+        dispose_override()

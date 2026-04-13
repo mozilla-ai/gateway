@@ -3,12 +3,10 @@
 from unittest.mock import patch
 
 import pytest
-from any_llm.types.completion import CompletionUsage
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from gateway.api.routes.chat import log_usage
 from gateway.core.config import API_KEY_HEADER
 from gateway.models.entities import Budget, User
 from gateway.services.budget_service import _is_model_free, reset_user_budget
@@ -20,7 +18,7 @@ def test_create_user_rollback_on_commit_failure(
 ) -> None:
     """create_user rolls back and returns 500 when commit fails."""
     with patch(
-        "gateway.api.routes.users.Session.commit",
+        "gateway.api.routes.users.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -39,7 +37,7 @@ def test_delete_user_rollback_on_commit_failure(
     client.post("/v1/users", json={"user_id": "del-fail-user"}, headers=master_key_header)
 
     with patch(
-        "gateway.api.routes.users.Session.commit",
+        "gateway.api.routes.users.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.delete("/v1/users/del-fail-user", headers=master_key_header)
@@ -56,7 +54,7 @@ def test_create_key_rollback_on_commit_failure(
 ) -> None:
     """create_key rolls back on commit failure."""
     with patch(
-        "gateway.api.routes.keys.Session.commit",
+        "gateway.api.routes.keys.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -73,7 +71,7 @@ def test_create_budget_rollback_on_commit_failure(
 ) -> None:
     """create_budget rolls back on commit failure."""
     with patch(
-        "gateway.api.routes.budgets.Session.commit",
+        "gateway.api.routes.budgets.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -90,7 +88,7 @@ def test_set_pricing_rollback_on_commit_failure(
 ) -> None:
     """set_pricing rolls back on commit failure."""
     with patch(
-        "gateway.api.routes.pricing.Session.commit",
+        "gateway.api.routes.pricing.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.post(
@@ -105,56 +103,61 @@ def test_set_pricing_rollback_on_commit_failure(
     assert resp.status_code == 500
 
 
-def test_reset_user_budget_rollback_on_commit_failure(test_db: Session) -> None:
+@pytest.mark.asyncio
+async def test_reset_user_budget_rollback_on_commit_failure(async_db: Session) -> None:
     """reset_user_budget rolls back and re-raises when commit fails."""
     from datetime import UTC, datetime
 
     user = User(user_id="reset-fail-user", spend=50.0)
     budget = Budget(max_budget=100.0, budget_duration_sec=3600)
-    test_db.add_all([user, budget])
-    test_db.commit()
+    async_db.add_all([user, budget])
+    await async_db.commit()
 
     now = datetime.now(UTC)
 
     with (
-        patch.object(test_db, "commit", side_effect=OperationalError("db", {}, Exception("disk full"))),
-        patch.object(test_db, "rollback", wraps=test_db.rollback) as mock_rollback,
+        patch.object(async_db, "commit", side_effect=OperationalError("db", {}, Exception("disk full"))),
+        patch.object(async_db, "rollback", wraps=async_db.rollback) as mock_rollback,
     ):
         with pytest.raises(OperationalError):
-            reset_user_budget(test_db, user, budget, now)
+            await reset_user_budget(async_db, user, budget, now)
 
         mock_rollback.assert_called_once()
 
 
-def test_is_model_free_catches_value_error(test_db: Session) -> None:
+@pytest.mark.asyncio
+async def test_is_model_free_catches_value_error(async_db: Session) -> None:
     """_is_model_free returns False on ValueError from split_model_provider."""
-    result = _is_model_free(test_db, "completely-invalid-model-string-no-provider")
+    result = await _is_model_free(async_db, "completely-invalid-model-string-no-provider")
     assert result is False
 
 
-def test_is_model_free_catches_unsupported_provider_error(test_db: Session) -> None:
+@pytest.mark.asyncio
+async def test_is_model_free_catches_unsupported_provider_error(async_db: Session) -> None:
     """_is_model_free returns False on UnsupportedProviderError from split_model_provider."""
-    result = _is_model_free(test_db, "unknown:some-model")
+    result = await _is_model_free(async_db, "unknown:some-model")
     assert result is False
 
 
-def test_is_model_free_catches_sqlalchemy_error(test_db: Session) -> None:
+@pytest.mark.asyncio
+async def test_is_model_free_catches_sqlalchemy_error(async_db: Session) -> None:
     """_is_model_free returns False on SQLAlchemy errors during pricing lookup."""
     with patch(
         "gateway.services.budget_service.find_model_pricing",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
-        result = _is_model_free(test_db, "openai:gpt-4o")
+        result = await _is_model_free(async_db, "openai:gpt-4o")
         assert result is False
 
 
-def test_is_model_free_does_not_catch_unexpected_errors(test_db: Session) -> None:
+@pytest.mark.asyncio
+async def test_is_model_free_does_not_catch_unexpected_errors(async_db: Session) -> None:
     """_is_model_free does not swallow unexpected non-DB, non-ValueError exceptions."""
     with (
         patch("gateway.services.budget_service.find_model_pricing", side_effect=RuntimeError("unexpected")),
         pytest.raises(RuntimeError, match="unexpected"),
     ):
-        _is_model_free(test_db, "openai:gpt-4o")
+        await _is_model_free(async_db, "openai:gpt-4o")
 
 
 def test_auth_commit_failure_does_not_break_verification(
@@ -170,7 +173,7 @@ def test_auth_commit_failure_does_not_break_verification(
     api_key = key_resp.json()["key"]
 
     with patch(
-        "gateway.api.deps.Session.commit",
+        "gateway.api.deps.AsyncSession.commit",
         side_effect=OperationalError("db", {}, Exception("connection lost")),
     ):
         resp = client.get(
@@ -181,38 +184,3 @@ def test_auth_commit_failure_does_not_break_verification(
         # The /v1/users endpoint requires master key, so we may get 401
         # (API key not accepted as master key), but crucially not 500.
         assert resp.status_code != 500
-
-
-@pytest.mark.asyncio
-async def test_log_usage_catches_sqlalchemy_error(test_db: Session) -> None:
-    """log_usage catches SQLAlchemyError and rolls back without raising."""
-    usage = CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-
-    with patch.object(test_db, "commit", side_effect=OperationalError("db", {}, Exception("gone"))):
-        await log_usage(
-            db=test_db,
-            api_key_obj=None,
-            model="gpt-4o",
-            provider="openai",
-            endpoint="/v1/chat/completions",
-            usage_override=usage,
-        )
-
-
-@pytest.mark.asyncio
-async def test_log_usage_does_not_catch_non_db_errors(test_db: Session) -> None:
-    """log_usage does not swallow non-SQLAlchemy exceptions like RuntimeError."""
-    usage = CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-
-    with (
-        patch.object(test_db, "commit", side_effect=RuntimeError("unexpected")),
-        pytest.raises(RuntimeError, match="unexpected"),
-    ):
-        await log_usage(
-            db=test_db,
-            api_key_obj=None,
-            model="gpt-4o",
-            provider="openai",
-            endpoint="/v1/chat/completions",
-            usage_override=usage,
-        )

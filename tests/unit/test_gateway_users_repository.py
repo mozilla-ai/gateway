@@ -1,41 +1,31 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from gateway.repositories.users_repository import get_active_user
 
 
-def test_get_active_user_skips_for_update_on_sqlite() -> None:
-    db = MagicMock()
-    db.bind.dialect.name = "sqlite"
-    query = db.query.return_value
-    query.filter.return_value = query
-    query.first.return_value = object()
+@pytest.mark.asyncio
+async def test_get_active_user_applies_for_update_when_requested() -> None:
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = object()
+    db.execute = AsyncMock(return_value=result)
 
-    get_active_user(db, "user-1", for_update=True)
+    await get_active_user(db, "user-1", for_update=True)
 
-    query.with_for_update.assert_not_called()
-
-
-def test_get_active_user_uses_for_update_on_non_sqlite() -> None:
-    db = MagicMock()
-    db.bind.dialect.name = "postgresql"
-    query = db.query.return_value
-    query.filter.return_value = query
-    query.with_for_update.return_value = query
-    query.first.return_value = object()
-
-    get_active_user(db, "user-1", for_update=True)
-
-    query.with_for_update.assert_called_once_with()
+    executed_stmt = db.execute.call_args.args[0]
+    assert executed_stmt._for_update_arg is not None  # type: ignore[attr-defined]
 
 
-def test_get_active_user_uses_for_update_when_bind_is_missing() -> None:
-    db = MagicMock()
-    db.bind = None
-    query = db.query.return_value
-    query.filter.return_value = query
-    query.with_for_update.return_value = query
-    query.first.return_value = object()
+@pytest.mark.asyncio
+async def test_get_active_user_skips_for_update_when_not_requested() -> None:
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = object()
+    db.execute = AsyncMock(return_value=result)
 
-    get_active_user(db, "user-1", for_update=True)
+    await get_active_user(db, "user-2", for_update=False)
 
-    query.with_for_update.assert_called_once_with()
+    executed_stmt = db.execute.call_args.args[0]
+    assert executed_stmt._for_update_arg is None  # type: ignore[attr-defined]

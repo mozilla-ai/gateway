@@ -4,8 +4,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.deps import get_db, verify_master_key
 from gateway.auth.models import generate_api_key, hash_key
@@ -74,7 +75,7 @@ class UpdateKeyRequest(BaseModel):
 @router.post("", dependencies=[Depends(verify_master_key)])
 async def create_key(
     request: CreateKeyRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CreateKeyResponse:
     """Create a new API key.
 
@@ -88,7 +89,8 @@ async def create_key(
     key_id = uuid.uuid4()
 
     if request.user_id:
-        user = db.query(User).filter(User.user_id == request.user_id).first()
+        result = await db.execute(select(User).where(User.user_id == request.user_id))
+        user = result.scalar_one_or_none()
         if not user:
             user = User(
                 user_id=request.user_id,
@@ -120,14 +122,14 @@ async def create_key(
 
     db.add(db_key)
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
         ) from None
-    db.refresh(db_key)
+    await db.refresh(db_key)
 
     key_info = KeyInfo.from_model(db_key)
     return CreateKeyResponse(
@@ -138,7 +140,7 @@ async def create_key(
 
 @router.get("", dependencies=[Depends(verify_master_key)])
 async def list_keys(
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[KeyInfo]:
@@ -146,7 +148,8 @@ async def list_keys(
 
     Requires master key authentication.
     """
-    keys = db.query(APIKey).offset(skip).limit(limit).all()
+    result = await db.execute(select(APIKey).offset(skip).limit(limit))
+    keys = result.scalars().all()
 
     return [KeyInfo.from_model(key) for key in keys]
 
@@ -154,13 +157,14 @@ async def list_keys(
 @router.get("/{key_id}", dependencies=[Depends(verify_master_key)])
 async def get_key(
     key_id: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> KeyInfo:
     """Get details of a specific API key.
 
     Requires master key authentication.
     """
-    key = db.query(APIKey).filter(APIKey.id == key_id).first()
+    result = await db.execute(select(APIKey).where(APIKey.id == key_id))
+    key = result.scalar_one_or_none()
 
     if not key:
         raise HTTPException(
@@ -175,13 +179,14 @@ async def get_key(
 async def update_key(
     key_id: str,
     request: UpdateKeyRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> KeyInfo:
     """Update an API key.
 
     Requires master key authentication.
     """
-    key = db.query(APIKey).filter(APIKey.id == key_id).first()
+    result = await db.execute(select(APIKey).where(APIKey.id == key_id))
+    key = result.scalar_one_or_none()
 
     if not key:
         raise HTTPException(
@@ -199,14 +204,14 @@ async def update_key(
         key.metadata_ = request.metadata
 
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
         ) from None
-    db.refresh(key)
+    await db.refresh(key)
 
     return KeyInfo.from_model(key)
 
@@ -214,13 +219,14 @@ async def update_key(
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(verify_master_key)])
 async def delete_key(
     key_id: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete (revoke) an API key.
 
     Requires master key authentication.
     """
-    key = db.query(APIKey).filter(APIKey.id == key_id).first()
+    result = await db.execute(select(APIKey).where(APIKey.id == key_id))
+    key = result.scalar_one_or_none()
 
     if not key:
         raise HTTPException(
@@ -228,11 +234,11 @@ async def delete_key(
             detail=f"API key with id '{key_id}' not found",
         )
 
-    db.delete(key)
+    await db.delete(key)
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",

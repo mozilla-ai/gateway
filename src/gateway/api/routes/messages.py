@@ -11,9 +11,9 @@ from any_llm.types.messages import (
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.api.deps import get_config, get_db, verify_api_key_or_master_key
+from gateway.api.deps import get_config, get_db, get_log_writer, verify_api_key_or_master_key
 from gateway.api.routes._helpers import resolve_user_id
 from gateway.api.routes.chat import get_provider_kwargs, log_usage, rate_limit_headers
 from gateway.core.config import GatewayConfig
@@ -21,6 +21,7 @@ from gateway.log_config import logger
 from gateway.models.entities import APIKey
 from gateway.rate_limit import check_rate_limit
 from gateway.services.budget_service import validate_user_budget
+from gateway.services.log_writer import LogWriter
 from gateway.streaming import ANTHROPIC_STREAM_FORMAT, streaming_generator
 
 router = APIRouter(prefix="/v1", tags=["messages"])
@@ -55,9 +56,7 @@ def _anthropic_error(error_type: str, message: str, status_code: int) -> HTTPExc
 
 _ERR_INVALID_REQUEST = "invalid_request_error"
 _ERR_API = "api_error"
-_MASTER_KEY_USER_REQUIRED = (
-    "When using master key, 'metadata.user_id' is required in request body"
-)
+_MASTER_KEY_USER_REQUIRED = "When using master key, 'metadata.user_id' is required in request body"
 _API_KEY_VALIDATION_FAILED = "API key validation failed"
 _API_KEY_NO_USER = "API key has no associated user"
 _PROVIDER_ERROR = "The request could not be completed by the provider"
@@ -68,14 +67,14 @@ async def create_message(
     raw_request: Request,
     response: Response,
     request: MessagesRequest,
-    auth_result: Annotated[
-        tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)
-    ],
-    db: Annotated[Session, Depends(get_db)],
+    auth_result: Annotated[tuple[APIKey | None, bool], Depends(verify_api_key_or_master_key)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     config: Annotated[GatewayConfig, Depends(get_config)],
+    log_writer: Annotated[LogWriter, Depends(get_log_writer)],
 ) -> dict[str, Any] | StreamingResponse:
     """Anthropic Messages API-compatible endpoint."""
     api_key, is_master_key = auth_result
+    api_key_id = api_key.id if api_key else None
     user_from_metadata = request.metadata.get("user_id") if request.metadata else None
     user_id = resolve_user_id(
         user_id_from_request=str(user_from_metadata) if user_from_metadata else None,
@@ -100,7 +99,9 @@ async def create_message(
 
     rate_limit_info = check_rate_limit(raw_request, user_id)
 
-    _ = await validate_user_budget(db, user_id, request.model)
+    _ = await validate_user_budget(db, user_id, request.model, strategy=config.budget_strategy)
+    if config.budget_strategy == "for_update":
+        await db.rollback()
 
     provider, model = AnyLLM.split_model_provider(request.model)
 
@@ -139,7 +140,8 @@ async def create_message(
             async def _on_complete(usage_data: CompletionUsage) -> None:
                 await log_usage(
                     db=db,
-                    api_key_obj=api_key,
+                    log_writer=log_writer,
+                    api_key_id=api_key_id,
                     model=model,
                     provider=provider,
                     endpoint="/v1/messages",
@@ -150,7 +152,8 @@ async def create_message(
             async def _on_error(error: str) -> None:
                 await log_usage(
                     db=db,
-                    api_key_obj=api_key,
+                    log_writer=log_writer,
+                    api_key_id=api_key_id,
                     model=model,
                     provider=provider,
                     endpoint="/v1/messages",
@@ -184,7 +187,8 @@ async def create_message(
             )
             await log_usage(
                 db=db,
-                api_key_obj=api_key,
+                log_writer=log_writer,
+                api_key_id=api_key_id,
                 model=model,
                 provider=provider,
                 endpoint="/v1/messages",
@@ -197,7 +201,8 @@ async def create_message(
     except Exception as e:
         await log_usage(
             db=db,
-            api_key_obj=api_key,
+            log_writer=log_writer,
+            api_key_id=api_key_id,
             model=model,
             provider=provider,
             endpoint="/v1/messages",

@@ -3,8 +3,9 @@ from typing import Annotated
 from any_llm import AnyLLM
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.deps import get_db, verify_api_key_or_master_key, verify_master_key
 from gateway.models.entities import ModelPricing
@@ -44,12 +45,13 @@ class PricingResponse(BaseModel):
 @router.post("", dependencies=[Depends(verify_master_key)])
 async def set_pricing(
     request: SetPricingRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PricingResponse:
     """Set or update pricing for a model."""
     provider, model_name = AnyLLM.split_model_provider(request.model_key)
     normalized_key = f"{provider.value}:{model_name}"
-    pricing = db.query(ModelPricing).filter(ModelPricing.model_key == normalized_key).first()
+    result = await db.execute(select(ModelPricing).where(ModelPricing.model_key == normalized_key))
+    pricing = result.scalar_one_or_none()
 
     if pricing:
         pricing.input_price_per_million = request.input_price_per_million
@@ -63,26 +65,27 @@ async def set_pricing(
         db.add(pricing)
 
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
         ) from None
-    db.refresh(pricing)
+    await db.refresh(pricing)
 
     return PricingResponse.from_model(pricing)
 
 
 @router.get("", dependencies=[Depends(verify_api_key_or_master_key)])
 async def list_pricing(
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[PricingResponse]:
     """List all model pricing."""
-    pricings = db.query(ModelPricing).offset(skip).limit(limit).all()
+    result = await db.execute(select(ModelPricing).offset(skip).limit(limit))
+    pricings = result.scalars().all()
 
     return [PricingResponse.from_model(pricing) for pricing in pricings]
 
@@ -90,10 +93,11 @@ async def list_pricing(
 @router.get("/{model_key}", dependencies=[Depends(verify_api_key_or_master_key)])
 async def get_pricing(
     model_key: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PricingResponse:
     """Get pricing for a specific model."""
-    pricing = db.query(ModelPricing).filter(ModelPricing.model_key == model_key).first()
+    result = await db.execute(select(ModelPricing).where(ModelPricing.model_key == model_key))
+    pricing = result.scalar_one_or_none()
 
     if not pricing:
         raise HTTPException(
@@ -107,10 +111,11 @@ async def get_pricing(
 @router.delete("/{model_key}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(verify_master_key)])
 async def delete_pricing(
     model_key: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete pricing for a model."""
-    pricing = db.query(ModelPricing).filter(ModelPricing.model_key == model_key).first()
+    result = await db.execute(select(ModelPricing).where(ModelPricing.model_key == model_key))
+    pricing = result.scalar_one_or_none()
 
     if not pricing:
         raise HTTPException(
@@ -118,11 +123,11 @@ async def delete_pricing(
             detail=f"Pricing for model '{model_key}' not found",
         )
 
-    db.delete(pricing)
+    await db.delete(pricing)
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",

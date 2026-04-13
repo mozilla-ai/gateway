@@ -1,10 +1,11 @@
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.api.deps import get_config, get_db
+from gateway.api.deps import get_config, get_db_if_needed
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
 from gateway.version import __version__
@@ -58,7 +59,10 @@ async def health_liveness() -> str:
 
 
 @router.get("/readiness")
-async def health_readiness(config: GatewayConfig = Depends(get_config)) -> dict[str, Any]:
+async def health_readiness(
+    config: GatewayConfig = Depends(get_config),
+    db: Annotated[AsyncSession | None, Depends(get_db_if_needed)] = None,
+) -> dict[str, Any]:
     """Readiness probe endpoint.
 
     Checks if the gateway is ready to serve requests by validating:
@@ -94,20 +98,15 @@ async def health_readiness(config: GatewayConfig = Depends(get_config)) -> dict[
             "version": __version__,
         }
 
-    try:
-        db_gen = get_db()
-        db = next(db_gen)
-        try:
-            db.execute(text("SELECT 1"))
-            db_status = "connected"
-        finally:
-            try:
-                next(db_gen)
-            except StopIteration:
-                pass
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unhealthy", "database": "unavailable", "version": __version__},
+        )
 
-    except HTTPException:
-        raise
+    try:
+        await db.execute(text("SELECT 1"))
+        db_status = "connected"
     except Exception as e:
         logger.error("Database connectivity check failed: %s", e)
         raise HTTPException(

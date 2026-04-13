@@ -1,19 +1,22 @@
+import asyncio
 import os
 import socket
 import sys
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
 import uvicorn
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
@@ -41,15 +44,41 @@ def _run_alembic_migrations(database_url: str) -> None:
     command.upgrade(alembic_cfg, "head")
 
 
+def _to_async_url(database_url: str) -> str:
+    if database_url.startswith("postgresql+psycopg2://"):
+        return database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("sqlite:///") and not database_url.startswith("sqlite+aiosqlite"):
+        return database_url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+    return database_url
+
+
+def build_async_session_override(
+    database_url: str,
+) -> tuple[Callable[[], AsyncGenerator[AsyncSession, None]], Callable[[], None]]:
+    """Return an async get_db override for ad-hoc FastAPI apps."""
+
+    async_engine = create_async_engine(_to_async_url(database_url), pool_pre_ping=True)
+    async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_factory() as session:
+            yield session
+
+    def dispose() -> None:
+        pass
+
+    return override_get_db, dispose
+
+
 @pytest.fixture(scope="session")
 def postgres_url() -> Generator[str]:
     """Get PostgreSQL URL from environment or start temporary container."""
     if url := os.getenv("TEST_DATABASE_URL"):
         yield url
     else:
-        postgres = PostgresContainer(
-            "postgres:17", username="test", password="test", dbname="test_db"
-        )  # noqa: S106
+        postgres = PostgresContainer("postgres:17", username="test", password="test", dbname="test_db")  # noqa: S106
         postgres.start()
         try:
             yield postgres.get_connection_url()
@@ -74,6 +103,26 @@ def test_db(postgres_url: str) -> Generator[Session]:
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
             conn.commit()
+
+
+@pytest_asyncio.fixture
+async def async_db(postgres_url: str) -> AsyncGenerator[AsyncSession, None]:
+    """Create an async test database session."""
+    _run_alembic_migrations(postgres_url)
+    async_engine = create_async_engine(_to_async_url(postgres_url), pool_pre_ping=True)
+    async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
+
+    try:
+        async with async_session_factory() as session:
+            yield session
+    finally:
+        await async_engine.dispose()
+        engine = create_engine(postgres_url, pool_pre_ping=True)
+        Base.metadata.drop_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
+            conn.commit()
+        engine.dispose()
 
 
 @pytest.fixture
@@ -103,21 +152,15 @@ def test_config(postgres_url: str) -> GatewayConfig:
 @pytest.fixture
 def client(test_config: GatewayConfig) -> Generator[TestClient]:
     """Create a test client for the FastAPI app."""
-    from sqlalchemy import text
-
     _run_alembic_migrations(test_config.database_url)
     engine = create_engine(test_config.database_url, pool_pre_ping=True)
+    async_engine = create_async_engine(_to_async_url(test_config.database_url), pool_pre_ping=True)
+    async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
     app = create_app(test_config)
 
-    def override_get_db() -> Generator[Session]:
-        testing_session_local = sessionmaker(
-            autocommit=False, autoflush=False, bind=engine
-        )
-        db = testing_session_local()
-        try:
-            yield db
-        finally:
-            db.close()
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_factory() as session:
+            yield session
 
     app.dependency_overrides[get_db] = override_get_db
 
@@ -129,6 +172,12 @@ def client(test_config: GatewayConfig) -> Generator[TestClient]:
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
             conn.commit()
+        try:
+            asyncio.run(async_engine.dispose())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(async_engine.dispose())
+            loop.close()
 
 
 @pytest.fixture
@@ -139,9 +188,7 @@ def master_key_header(test_config: GatewayConfig) -> dict[str, str]:
 
 
 @pytest.fixture
-def api_key_obj(
-    client: TestClient, master_key_header: dict[str, str]
-) -> dict[str, Any]:
+def api_key_obj(client: TestClient, master_key_header: dict[str, str]) -> dict[str, Any]:
     """Create a test API key and return its details."""
     response = client.post(
         "/v1/keys",
@@ -154,9 +201,7 @@ def api_key_obj(
 
 
 @pytest.fixture
-def api_key_header(
-    test_config: GatewayConfig, api_key_obj: dict[str, Any]
-) -> dict[str, str]:
+def api_key_header(test_config: GatewayConfig, api_key_obj: dict[str, Any]) -> dict[str, str]:
     """Return authentication header with API key."""
     header_name = API_KEY_HEADER
     return {header_name: f"Bearer {api_key_obj['key']}"}
@@ -188,9 +233,7 @@ def test_messages_with_longer_response() -> list[dict[str, str]]:
 
 
 @pytest.fixture
-def model_pricing(
-    client: TestClient, master_key_header: dict[str, str]
-) -> dict[str, Any]:
+def model_pricing(client: TestClient, master_key_header: dict[str, str]) -> dict[str, Any]:
     """Create model pricing for gemini-2.5-flash."""
     response = client.post(
         "/v1/pricing",
@@ -215,9 +258,7 @@ class LiveServer:
 
 
 @pytest.fixture
-def live_server(
-    test_config: GatewayConfig, api_key_obj: dict[str, Any]
-) -> Generator[LiveServer]:
+def live_server(test_config: GatewayConfig, api_key_obj: dict[str, Any]) -> Generator[LiveServer]:
     """Start a live uvicorn server and yield its URL and API key."""
     # Find an available port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

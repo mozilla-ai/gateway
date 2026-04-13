@@ -1,17 +1,19 @@
-from collections.abc import Generator
+import asyncio
+from collections.abc import AsyncGenerator, Generator
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from gateway.core.config import GatewayConfig
 from gateway.db import get_db
 from gateway.main import create_app
 
-from .conftest import _run_alembic_migrations
+from .conftest import _run_alembic_migrations, _to_async_url
 
 
 class MockCompletionError(Exception):
@@ -49,15 +51,13 @@ def client_with_client_args(config_with_client_args: GatewayConfig) -> Generator
 
     _run_alembic_migrations(config_with_client_args.database_url)
     engine = create_engine(config_with_client_args.database_url, pool_pre_ping=True)
+    async_engine = create_async_engine(_to_async_url(config_with_client_args.database_url), pool_pre_ping=True)
+    async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
     app = create_app(config_with_client_args)
 
-    def override_get_db() -> Generator[Session]:
-        testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db = testing_session_local()
-        try:
-            yield db
-        finally:
-            db.close()
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_factory() as session:
+            yield session
 
     app.dependency_overrides[get_db] = override_get_db
 
@@ -69,6 +69,12 @@ def client_with_client_args(config_with_client_args: GatewayConfig) -> Generator
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
             conn.commit()
+        try:
+            asyncio.run(async_engine.dispose())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(async_engine.dispose())
+            loop.close()
 
 
 @pytest.mark.asyncio

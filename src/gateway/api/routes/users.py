@@ -3,8 +3,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.deps import get_db, verify_master_key
 from gateway.models.entities import APIKey, Budget, UsageLog, User
@@ -102,15 +103,26 @@ class UsageLogResponse(BaseModel):
 @router.post("", dependencies=[Depends(verify_master_key)])
 async def create_user(
     request: CreateUserRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserResponse:
     """Create a new user."""
-    existing_user = db.query(User).filter(User.user_id == request.user_id).first()
+    result = await db.execute(select(User).where(User.user_id == request.user_id))
+    existing_user = result.scalar_one_or_none()
     if existing_user and existing_user.deleted_at is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"User with id '{request.user_id}' already exists",
         )
+
+    budget: Budget | None = None
+    if request.budget_id:
+        budget_result = await db.execute(select(Budget).where(Budget.budget_id == request.budget_id))
+        budget = budget_result.scalar_one_or_none()
+        if not budget:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Budget with id '{request.budget_id}' not found",
+            )
 
     if existing_user and existing_user.deleted_at is not None:
         user = existing_user
@@ -132,40 +144,36 @@ async def create_user(
         )
         db.add(user)
 
-    if request.budget_id:
-        budget = db.query(Budget).filter(Budget.budget_id == request.budget_id).first()
-        if not budget:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Budget with id '{request.budget_id}' not found",
-            )
-
+    if budget is not None:
         now = datetime.now(UTC)
         user.budget_started_at = now
         if budget.budget_duration_sec:
             user.next_budget_reset_at = calculate_next_reset(now, budget.budget_duration_sec)
+        else:
+            user.next_budget_reset_at = None
 
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
         ) from None
-    db.refresh(user)
+    await db.refresh(user)
 
     return UserResponse.from_model(user)
 
 
 @router.get("", dependencies=[Depends(verify_master_key)])
 async def list_users(
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[UserResponse]:
     """List all users with pagination."""
-    users = db.query(User).filter(User.deleted_at.is_(None)).offset(skip).limit(limit).all()
+    result = await db.execute(select(User).where(User.deleted_at.is_(None)).offset(skip).limit(limit))
+    users = result.scalars().all()
 
     return [UserResponse.from_model(user) for user in users]
 
@@ -173,10 +181,10 @@ async def list_users(
 @router.get("/{user_id}", dependencies=[Depends(verify_master_key)])
 async def get_user(
     user_id: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserResponse:
     """Get details of a specific user."""
-    user = get_active_user(db, user_id)
+    user = await get_active_user(db, user_id)
 
     if not user:
         raise HTTPException(
@@ -191,10 +199,10 @@ async def get_user(
 async def update_user(
     user_id: str,
     request: UpdateUserRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserResponse:
     """Update a user."""
-    user = get_active_user(db, user_id)
+    user = await get_active_user(db, user_id)
 
     if not user:
         raise HTTPException(
@@ -205,7 +213,8 @@ async def update_user(
     if request.alias is not None:
         user.alias = request.alias
     if request.budget_id is not None:
-        budget = db.query(Budget).filter(Budget.budget_id == request.budget_id).first()
+        budget_result = await db.execute(select(Budget).where(Budget.budget_id == request.budget_id))
+        budget = budget_result.scalar_one_or_none()
         if not budget:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -225,14 +234,14 @@ async def update_user(
         user.metadata_ = request.metadata
 
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
         ) from None
-    db.refresh(user)
+    await db.refresh(user)
 
     return UserResponse.from_model(user)
 
@@ -240,10 +249,10 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(verify_master_key)])
 async def delete_user(
     user_id: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete a user."""
-    user = get_active_user(db, user_id)
+    user = await get_active_user(db, user_id)
 
     if not user:
         raise HTTPException(
@@ -251,13 +260,18 @@ async def delete_user(
             detail=f"User with id '{user_id}' not found",
         )
 
-    db.query(APIKey).filter(APIKey.user_id == user_id).update({"is_active": False}, synchronize_session="fetch")
+    await db.execute(
+        update(APIKey)
+        .where(APIKey.user_id == user_id)
+        .values(is_active=False)
+        .execution_options(synchronize_session=False)
+    )
     user.deleted_at = datetime.now(UTC)
 
     try:
-        db.commit()
+        await db.commit()
     except SQLAlchemyError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error",
@@ -267,25 +281,26 @@ async def delete_user(
 @router.get("/{user_id}/usage", dependencies=[Depends(verify_master_key)])
 async def get_user_usage(
     user_id: str,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[UsageLogResponse]:
     """Get usage history for a specific user."""
-    user = db.query(User).filter(User.user_id == user_id).first()
+    result = await db.execute(select(User).where(User.user_id == user_id))
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with id '{user_id}' not found",
         )
 
-    usage_logs = (
-        db.query(UsageLog)
-        .filter(UsageLog.user_id == user_id)
+    usage_result = await db.execute(
+        select(UsageLog)
+        .where(UsageLog.user_id == user_id)
         .order_by(UsageLog.timestamp.desc())
         .offset(skip)
         .limit(limit)
-        .all()
     )
+    usage_logs = usage_result.scalars().all()
 
     return [UsageLogResponse.from_model(log) for log in usage_logs]
