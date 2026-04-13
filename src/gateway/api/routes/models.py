@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.deps import get_db, verify_api_key_or_master_key
@@ -51,7 +51,25 @@ async def list_models(
     Returns models derived from the model_pricing table in an
     OpenAI-compatible format.
     """
-    result = await db.execute(select(ModelPricing).order_by(ModelPricing.model_key))
+    latest_effective = (
+        select(
+            ModelPricing.model_key.label("model_key"),
+            func.max(ModelPricing.effective_at).label("effective_at"),
+        )
+        .group_by(ModelPricing.model_key)
+        .subquery()
+    )
+
+    stmt = (
+        select(ModelPricing)
+        .join(
+            latest_effective,
+            (ModelPricing.model_key == latest_effective.c.model_key)
+            & (ModelPricing.effective_at == latest_effective.c.effective_at),
+        )
+        .order_by(ModelPricing.model_key)
+    )
+    result = await db.execute(stmt)
     pricings = result.scalars().all()
     return ModelListResponse(data=[_model_from_pricing(p) for p in pricings])
 
@@ -62,8 +80,13 @@ async def get_model(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ModelObject:
     """Get details for a specific model."""
-    result = await db.execute(select(ModelPricing).where(ModelPricing.model_key == model_id))
-    pricing = result.scalar_one_or_none()
+    stmt = (
+        select(ModelPricing)
+        .where(ModelPricing.model_key == model_id)
+        .order_by(ModelPricing.effective_at.desc())
+        .limit(1)
+    )
+    pricing = (await db.execute(stmt)).scalar_one_or_none()
 
     if not pricing:
         raise HTTPException(

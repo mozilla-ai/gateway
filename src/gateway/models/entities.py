@@ -120,6 +120,11 @@ class ModelPricing(Base):
     __tablename__ = "model_pricing"
 
     model_key: Mapped[str] = mapped_column(primary_key=True)
+    effective_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        primary_key=True,
+        default=lambda: datetime.now(UTC),
+    )
     input_price_per_million: Mapped[float] = mapped_column()
     output_price_per_million: Mapped[float] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -133,6 +138,7 @@ class ModelPricing(Base):
         """Convert model to dictionary."""
         return {
             "model_key": self.model_key,
+            "effective_at": self.effective_at.isoformat() if self.effective_at else None,
             "input_price_per_million": self.input_price_per_million,
             "output_price_per_million": self.output_price_per_million,
             "created_at": self.created_at.isoformat() if self.created_at else None,

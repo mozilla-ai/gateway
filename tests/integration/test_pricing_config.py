@@ -1,6 +1,6 @@
 """Tests for pricing configuration from config file."""
 
-from typing import Any
+from datetime import UTC, datetime
 
 import pytest
 from any_llm.types.completion import CompletionUsage
@@ -53,6 +53,38 @@ def test_pricing_loaded_from_config(postgres_url: str, test_db: Session) -> None
             assert pricing is not None, "GPT-3.5-turbo pricing should be loaded from config"
             assert pricing.input_price_per_million == 0.5
             assert pricing.output_price_per_million == 1.5
+    finally:
+        dispose_override()
+
+
+def test_pricing_loaded_with_explicit_effective_at(postgres_url: str, test_db: Session) -> None:
+    """Configuration respects explicitly provided effective_at timestamps."""
+
+    effective_at = datetime(2025, 1, 15, tzinfo=UTC)
+    config = GatewayConfig(
+        database_url=postgres_url,
+        master_key="test-master-key",
+        host="127.0.0.1",
+        port=8000,
+        providers={"openai": {"api_key": "test-key"}},
+        pricing={
+            "openai:gpt-4": PricingConfig(
+                input_price_per_million=30.0,
+                output_price_per_million=60.0,
+                effective_at=effective_at,
+            ),
+        },
+    )
+
+    app = create_app(config)
+    override_get_db, dispose_override = build_async_session_override(postgres_url)
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestClient(app):
+            pricing = test_db.query(ModelPricing).filter(ModelPricing.model_key == "openai:gpt-4").first()
+            assert pricing is not None
+            assert pricing.effective_at == effective_at
     finally:
         dispose_override()
 
@@ -175,6 +207,111 @@ def test_set_pricing_api_normalizes_legacy_slash_format(
     assert response.status_code == 200
     data = response.json()
     assert data["model_key"] == "gemini:gemini-2.5-flash", "API should normalize slash to colon format"
+
+
+def test_pricing_history_endpoint_returns_entries(
+    client: TestClient,
+    master_key_header: dict[str, str],
+) -> None:
+    """GET /v1/pricing/{model_key}/history returns versions in descending order."""
+
+    model_key = "openai:gpt-4"
+    first_effective = datetime(2025, 1, 1, tzinfo=UTC)
+    second_effective = datetime(2025, 2, 1, tzinfo=UTC)
+
+    for effective_at, input_price in [(first_effective, 20.0), (second_effective, 25.0)]:
+        resp = client.post(
+            "/v1/pricing",
+            json={
+                "model_key": model_key,
+                "input_price_per_million": input_price,
+                "output_price_per_million": 40.0,
+                "effective_at": effective_at.isoformat(),
+            },
+            headers=master_key_header,
+        )
+        assert resp.status_code == 200
+
+    history_resp = client.get(f"/v1/pricing/{model_key}/history", headers=master_key_header)
+    assert history_resp.status_code == 200
+    history = history_resp.json()
+    assert [entry["effective_at"] for entry in history] == [
+        second_effective.isoformat(),
+        first_effective.isoformat(),
+    ]
+
+
+def test_get_pricing_respects_as_of(
+    client: TestClient,
+    master_key_header: dict[str, str],
+) -> None:
+    """GET /v1/pricing/{model_key} returns the effective price at a timestamp."""
+
+    model_key = "anthropic:claude-3"
+    early = datetime(2025, 3, 1, tzinfo=UTC)
+    later = datetime(2025, 4, 1, tzinfo=UTC)
+
+    for effective_at, input_price in [(early, 15.0), (later, 18.0)]:
+        resp = client.post(
+            "/v1/pricing",
+            json={
+                "model_key": model_key,
+                "input_price_per_million": input_price,
+                "output_price_per_million": 30.0,
+                "effective_at": effective_at.isoformat(),
+            },
+            headers=master_key_header,
+        )
+        assert resp.status_code == 200
+
+    latest_resp = client.get(f"/v1/pricing/{model_key}", headers=master_key_header)
+    assert latest_resp.status_code == 200
+    assert latest_resp.json()["input_price_per_million"] == 18.0
+
+    old_resp = client.get(
+        f"/v1/pricing/{model_key}",
+        params={"as_of": early.isoformat()},
+        headers=master_key_header,
+    )
+    assert old_resp.status_code == 200
+    assert old_resp.json()["input_price_per_million"] == 15.0
+
+
+def test_delete_pricing_with_effective_at(
+    client: TestClient,
+    master_key_header: dict[str, str],
+) -> None:
+    """Deleting with effective_at removes only the targeted row."""
+
+    model_key = "openai:gpt-4o"
+    old_effective = datetime(2025, 5, 1, tzinfo=UTC)
+    new_effective = datetime(2025, 5, 15, tzinfo=UTC)
+
+    for effective_at in (old_effective, new_effective):
+        resp = client.post(
+            "/v1/pricing",
+            json={
+                "model_key": model_key,
+                "input_price_per_million": 1.0,
+                "output_price_per_million": 2.0,
+                "effective_at": effective_at.isoformat(),
+            },
+            headers=master_key_header,
+        )
+        assert resp.status_code == 200
+
+    delete_resp = client.delete(
+        f"/v1/pricing/{model_key}",
+        params={"effective_at": old_effective.isoformat()},
+        headers=master_key_header,
+    )
+    assert delete_resp.status_code == 204
+
+    history_resp = client.get(f"/v1/pricing/{model_key}/history", headers=master_key_header)
+    assert history_resp.status_code == 200
+    history = history_resp.json()
+    assert len(history) == 1
+    assert history[0]["effective_at"] == new_effective.isoformat()
 
 
 def test_pricing_initialization_with_no_config(postgres_url: str, test_db: Session) -> None:

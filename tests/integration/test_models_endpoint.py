@@ -1,5 +1,6 @@
 """Tests for the GET /v1/models endpoint."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -35,6 +36,35 @@ def test_list_models_returns_configured_models(
     assert "created" in model
     assert isinstance(model["created"], int)
     assert "owned_by" in model
+
+
+def test_list_models_deduplicates_effective_entries(
+    client: TestClient,
+    master_key_header: dict[str, str],
+) -> None:
+    """Only the latest effective pricing per model is returned."""
+
+    model_key = "openai:gpt-4o"
+    older = datetime(2025, 1, 1, tzinfo=UTC)
+    newer = datetime(2025, 2, 1, tzinfo=UTC)
+
+    for effective_at, input_price in ((older, 1.0), (newer, 2.0)):
+        resp = client.post(
+            "/v1/pricing",
+            json={
+                "model_key": model_key,
+                "input_price_per_million": input_price,
+                "output_price_per_million": 3.0,
+                "effective_at": effective_at.isoformat(),
+            },
+            headers=master_key_header,
+        )
+        assert resp.status_code == 200
+
+    resp = client.get("/v1/models", headers=master_key_header)
+    assert resp.status_code == 200
+    models = [m for m in resp.json()["data"] if m["id"] == model_key]
+    assert len(models) == 1
 
 
 def test_list_models_owned_by_from_provider(

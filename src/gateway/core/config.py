@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,10 @@ class PricingConfig(BaseModel):
 
     input_price_per_million: float = Field(ge=0)
     output_price_per_million: float = Field(ge=0)
+    effective_at: datetime | None = Field(
+        default=None,
+        description="ISO 8601 datetime from which this price applies. Defaults to now if omitted.",
+    )
 
 
 class GatewayConfig(BaseSettings):

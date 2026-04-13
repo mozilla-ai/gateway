@@ -1,7 +1,5 @@
 """Tests for CORS configuration."""
 
-from typing import Any
-
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 

@@ -164,16 +164,16 @@ async def log_usage(
             usage_data.completion_tokens,
         )
 
-    pricing = await find_model_pricing(db, provider, model)
-    if pricing:
-        cost = (usage_data.prompt_tokens / 1_000_000) * pricing.input_price_per_million + (
-            usage_data.completion_tokens / 1_000_000
-        ) * pricing.output_price_per_million
-        usage_log.cost = cost
-        record_cost(str(provider or ""), model, cost)
-    else:
-        model_ref = f"{provider}:{model}" if provider else model
-        logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
+        pricing = await find_model_pricing(db, provider, model, as_of=usage_log.timestamp)
+        if pricing:
+            cost = (usage_data.prompt_tokens / 1_000_000) * pricing.input_price_per_million + (
+                usage_data.completion_tokens / 1_000_000
+            ) * pricing.output_price_per_million
+            usage_log.cost = cost
+            record_cost(str(provider or ""), model, cost)
+        else:
+            model_ref = f"{provider}:{model}" if provider else model
+            logger.warning(f"No pricing configured for '{model_ref}'. Usage will be tracked without cost.")
 
     await log_writer.put(usage_log)
 
