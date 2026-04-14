@@ -28,6 +28,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
+ARG GATEWAY_VERSION=0.0.0-dev
+ENV GATEWAY_VERSION=${GATEWAY_VERSION}
 ENV GATEWAY_HOST=0.0.0.0
 ENV GATEWAY_PORT=8000
 
