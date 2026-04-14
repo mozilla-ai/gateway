@@ -18,6 +18,7 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.18",
     "pyyaml>=6.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "uvicorn[standard]>=0.30.0",
