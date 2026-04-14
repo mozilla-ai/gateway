@@ -218,7 +218,8 @@ async def get_db_if_needed(
 
 
 def get_log_writer(request: Request) -> LogWriter:
-    return request.app.state.log_writer
+    writer: LogWriter = request.app.state.log_writer
+    return writer
 
 
 __all__ = [

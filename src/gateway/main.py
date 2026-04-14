@@ -1,4 +1,6 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -152,9 +154,9 @@ def _validate_platform_config(config: GatewayConfig) -> None:
         raise ValueError(msg)
 
 
-def _create_lifespan(config: GatewayConfig):  # noqa: ANN201 - FastAPI contract
+def _create_lifespan(config: GatewayConfig) -> Callable[[FastAPI], Any]:
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log_writer: LogWriter
         if config.is_platform_mode:
             log_writer = NoopLogWriter()

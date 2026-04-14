@@ -203,4 +203,4 @@ async def create_response(
         for key, value in rate_limit_headers(rate_limit_info).items():
             response.headers[key] = value
 
-    return result.model_dump(exclude_none=True)
+    return result.model_dump(exclude_none=True)  # type: ignore[union-attr]

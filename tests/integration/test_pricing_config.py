@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from any_llm.types.completion import CompletionUsage
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from gateway.api.routes.chat import log_usage
@@ -340,7 +341,7 @@ def test_pricing_initialization_with_no_config(postgres_url: str, test_db: Sessi
 
 
 @pytest.mark.asyncio
-async def test_log_usage_finds_pricing_with_legacy_slash_format(async_db) -> None:
+async def test_log_usage_finds_pricing_with_legacy_slash_format(async_db: AsyncSession) -> None:
     """Test that log_usage falls back to legacy slash format when colon format is absent."""
 
     class _Writer:
@@ -349,6 +350,12 @@ async def test_log_usage_finds_pricing_with_legacy_slash_format(async_db) -> Non
 
         async def put(self, log: UsageLog) -> None:
             self.logs.append(log)
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
 
     legacy_pricing = ModelPricing(
         model_key="openai/gpt-4",
@@ -378,7 +385,7 @@ async def test_log_usage_finds_pricing_with_legacy_slash_format(async_db) -> Non
 
 
 @pytest.mark.asyncio
-async def test_log_usage_finds_pricing_with_colon_format(async_db) -> None:
+async def test_log_usage_finds_pricing_with_colon_format(async_db: AsyncSession) -> None:
     """Test that log_usage uses canonical colon pricing when available."""
 
     class _Writer:
@@ -387,6 +394,12 @@ async def test_log_usage_finds_pricing_with_colon_format(async_db) -> None:
 
         async def put(self, log: UsageLog) -> None:
             self.logs.append(log)
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
 
     pricing = ModelPricing(
         model_key="openai:gpt-4",

@@ -81,7 +81,8 @@ async def _cas_reset_user_budget(db: AsyncSession, user: User, budget: Budget, n
         .execution_options(synchronize_session=False)
     )
 
-    if result.rowcount and result.rowcount > 0:
+    rowcount = getattr(result, "rowcount", 0)
+    if rowcount and rowcount > 0:
         reset_log = BudgetResetLog(
             user_id=user.user_id,
             budget_id=budget.budget_id,

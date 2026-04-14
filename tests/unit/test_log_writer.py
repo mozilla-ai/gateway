@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,7 +16,7 @@ async def test_single_log_writer_rolls_back_on_failure(monkeypatch: pytest.Monke
     session.commit.side_effect = SQLAlchemyError("boom")
 
     @asynccontextmanager
-    async def _session_cm():  # type: ignore[return-annnotation]
+    async def _session_cm() -> AsyncGenerator[AsyncMock, None]:
         yield session
 
     monkeypatch.setattr("gateway.services.log_writer.create_session", lambda: _session_cm())

@@ -145,7 +145,7 @@ class BatchLogWriter:
 def create_log_writer(strategy: str) -> LogWriter:
     if strategy == "batch":
         return BatchLogWriter()
-    return SingleLogWriter()  # type: ignore[return-value]
+    return SingleLogWriter()
 
 
 class NoopLogWriter:

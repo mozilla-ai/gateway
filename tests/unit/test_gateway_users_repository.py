@@ -15,7 +15,7 @@ async def test_get_active_user_applies_for_update_when_requested() -> None:
     await get_active_user(db, "user-1", for_update=True)
 
     executed_stmt = db.execute.call_args.args[0]
-    assert executed_stmt._for_update_arg is not None  # type: ignore[attr-defined]
+    assert executed_stmt._for_update_arg is not None
 
 
 @pytest.mark.asyncio
@@ -28,4 +28,4 @@ async def test_get_active_user_skips_for_update_when_not_requested() -> None:
     await get_active_user(db, "user-2", for_update=False)
 
     executed_stmt = db.execute.call_args.args[0]
-    assert executed_stmt._for_update_arg is None  # type: ignore[attr-defined]
+    assert executed_stmt._for_update_arg is None

@@ -185,6 +185,7 @@ def test_responses_endpoint_preserves_encrypted_reasoning_fields(
     assert result.status_code == 200
     assert result.json()["reasoning"]["encrypted_content"] == "***"
 
+    assert mock_call.await_args is not None
     kwargs = mock_call.await_args.kwargs
     assert kwargs["include"] == ["reasoning.encrypted_content"]
     assert kwargs["reasoning"] == {"effort": "medium"}

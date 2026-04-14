@@ -104,7 +104,7 @@ def test_delete_user_preserves_budget_reset_logs(
             usage=CompletionUsage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
         )
 
-        async def _mock_acompletion(**kwargs: Any) -> ChatCompletion:  # type: ignore[name-defined]
+        async def _mock_acompletion(**kwargs: Any) -> ChatCompletion:
             return mock_response
 
         mock_acompletion.side_effect = _mock_acompletion

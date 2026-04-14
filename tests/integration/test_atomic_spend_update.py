@@ -1,10 +1,11 @@
 """Tests for atomic spend update via SQL expression."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import pytest
 from any_llm.types.completion import CompletionUsage
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.routes.chat import log_usage
 from gateway.models.entities import ModelPricing, User
@@ -12,7 +13,7 @@ from gateway.services.log_writer import SingleLogWriter
 
 
 @pytest.mark.asyncio
-async def test_spend_update_uses_sql_expression(async_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_spend_update_uses_sql_expression(async_db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that _log_usage updates spend atomically via SQL, not Python read-modify-write."""
     # Set up user with initial spend
     user = User(user_id="atomic-user", spend=5.0)
@@ -31,7 +32,7 @@ async def test_spend_update_uses_sql_expression(async_db: Session, monkeypatch: 
     writer = SingleLogWriter()
 
     @asynccontextmanager
-    async def _session_cm():
+    async def _session_cm() -> AsyncGenerator[AsyncSession, None]:
         yield async_db
 
     monkeypatch.setattr("gateway.services.log_writer.create_session", lambda: _session_cm())
@@ -59,7 +60,7 @@ async def test_spend_update_uses_sql_expression(async_db: Session, monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_multiple_spend_updates_accumulate(async_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_multiple_spend_updates_accumulate(async_db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that multiple sequential spend updates accumulate correctly."""
     user = User(user_id="multi-spend-user", spend=0.0)
     async_db.add(user)
@@ -75,7 +76,7 @@ async def test_multiple_spend_updates_accumulate(async_db: Session, monkeypatch:
     writer = SingleLogWriter()
 
     @asynccontextmanager
-    async def _session_cm():
+    async def _session_cm() -> AsyncGenerator[AsyncSession, None]:
         yield async_db
 
     monkeypatch.setattr("gateway.services.log_writer.create_session", lambda: _session_cm())

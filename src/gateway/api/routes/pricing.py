@@ -93,7 +93,7 @@ async def _get_effective_pricing(
 async def _get_pricing_history(db: AsyncSession, model_keys: list[str]) -> list[ModelPricing]:
     for key in model_keys:
         stmt = select(ModelPricing).where(ModelPricing.model_key == key).order_by(ModelPricing.effective_at.desc())
-        pricings = (await db.execute(stmt)).scalars().all()
+        pricings = list((await db.execute(stmt)).scalars().all())
         if pricings:
             return pricings
     return []

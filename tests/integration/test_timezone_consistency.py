@@ -1,13 +1,14 @@
 """Tests for timezone-aware datetime consistency."""
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.routes.chat import log_usage
 from gateway.models.entities import UsageLog
 
 
 @pytest.mark.asyncio
-async def test_usage_log_timestamp_is_timezone_aware(async_db) -> None:
+async def test_usage_log_timestamp_is_timezone_aware(async_db: AsyncSession) -> None:
     """Test that usage log timestamps are stored with timezone info."""
 
     class _Writer:
@@ -16,6 +17,12 @@ async def test_usage_log_timestamp_is_timezone_aware(async_db) -> None:
 
         async def put(self, log: UsageLog) -> None:
             self.logs.append(log)
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
 
     writer = _Writer()
     await log_usage(

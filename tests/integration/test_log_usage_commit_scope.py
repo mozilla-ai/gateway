@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import pytest
 from any_llm.types.completion import CompletionUsage
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.api.routes.chat import log_usage
 from gateway.models.entities import ModelPricing, UsageLog
@@ -29,7 +30,7 @@ class StubLogWriter:
 
 
 @pytest.mark.asyncio
-async def test_log_usage_records_usage_data(async_db) -> None:
+async def test_log_usage_records_usage_data(async_db: AsyncSession) -> None:
     pricing = ModelPricing(model_key="openai:gpt-4o", input_price_per_million=2.0, output_price_per_million=4.0)
     async_db.add(pricing)
     await async_db.commit()
@@ -56,7 +57,7 @@ async def test_log_usage_records_usage_data(async_db) -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_usage_records_error(async_db) -> None:
+async def test_log_usage_records_error(async_db: AsyncSession) -> None:
     writer = StubLogWriter()
 
     await log_usage(

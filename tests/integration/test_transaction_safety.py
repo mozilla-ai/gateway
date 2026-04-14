@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import API_KEY_HEADER
 from gateway.models.entities import Budget, User
@@ -104,7 +104,7 @@ def test_set_pricing_rollback_on_commit_failure(
 
 
 @pytest.mark.asyncio
-async def test_reset_user_budget_rollback_on_commit_failure(async_db: Session) -> None:
+async def test_reset_user_budget_rollback_on_commit_failure(async_db: AsyncSession) -> None:
     """reset_user_budget rolls back and re-raises when commit fails."""
     from datetime import UTC, datetime
 
@@ -126,21 +126,21 @@ async def test_reset_user_budget_rollback_on_commit_failure(async_db: Session) -
 
 
 @pytest.mark.asyncio
-async def test_is_model_free_catches_value_error(async_db: Session) -> None:
+async def test_is_model_free_catches_value_error(async_db: AsyncSession) -> None:
     """_is_model_free returns False on ValueError from split_model_provider."""
     result = await _is_model_free(async_db, "completely-invalid-model-string-no-provider")
     assert result is False
 
 
 @pytest.mark.asyncio
-async def test_is_model_free_catches_unsupported_provider_error(async_db: Session) -> None:
+async def test_is_model_free_catches_unsupported_provider_error(async_db: AsyncSession) -> None:
     """_is_model_free returns False on UnsupportedProviderError from split_model_provider."""
     result = await _is_model_free(async_db, "unknown:some-model")
     assert result is False
 
 
 @pytest.mark.asyncio
-async def test_is_model_free_catches_sqlalchemy_error(async_db: Session) -> None:
+async def test_is_model_free_catches_sqlalchemy_error(async_db: AsyncSession) -> None:
     """_is_model_free returns False on SQLAlchemy errors during pricing lookup."""
     with patch(
         "gateway.services.budget_service.find_model_pricing",
@@ -151,7 +151,7 @@ async def test_is_model_free_catches_sqlalchemy_error(async_db: Session) -> None
 
 
 @pytest.mark.asyncio
-async def test_is_model_free_does_not_catch_unexpected_errors(async_db: Session) -> None:
+async def test_is_model_free_does_not_catch_unexpected_errors(async_db: AsyncSession) -> None:
     """_is_model_free does not swallow unexpected non-DB, non-ValueError exceptions."""
     with (
         patch("gateway.services.budget_service.find_model_pricing", side_effect=RuntimeError("unexpected")),
