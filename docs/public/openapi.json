@@ -1755,7 +1755,7 @@
     },
     "/v1/batches/{batch_id}/results": {
       "get": {
-        "description": "Retrieve the results of a completed batch.\n\n.. note::\n\n   The spec requires calling ``aretrieve_batch_results`` from ``any_llm.api``\n   and returning a ``BatchResult`` object with per-request results. However,\n   the SDK does not yet export ``aretrieve_batch_results``, ``BatchResult``,\n   ``BatchResultItem``, ``BatchResultError``, or ``BatchNotCompleteError``.\n\n   As a workaround this endpoint uses ``aretrieve_batch`` to check the batch\n   status and returns the batch metadata. Once the SDK ships the batch results\n   API this handler should be updated to call ``aretrieve_batch_results`` and\n   return the per-request results serialized via ``BatchResultResponse``.",
+        "description": "Retrieve the results of a completed batch.",
         "operationId": "retrieve_batch_results_v1_batches__batch_id__results_get",
         "parameters": [
           {
