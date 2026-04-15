@@ -1,6 +1,25 @@
 {
   "components": {
     "schemas": {
+      "BatchRequestItem": {
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "custom_id": {
+            "title": "Custom Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "custom_id",
+          "body"
+        ],
+        "title": "BatchRequestItem",
+        "type": "object"
+      },
       "BudgetResponse": {
         "description": "Response model for budget information.",
         "properties": {
@@ -185,6 +204,48 @@
           "messages"
         ],
         "title": "ChatCompletionRequest",
+        "type": "object"
+      },
+      "CreateBatchRequest": {
+        "properties": {
+          "completion_window": {
+            "default": "24h",
+            "title": "Completion Window",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/BatchRequestItem"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "model",
+          "requests"
+        ],
+        "title": "CreateBatchRequest",
         "type": "object"
       },
       "CreateBudgetRequest": {
@@ -1478,6 +1539,267 @@
         "summary": "Health Readiness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/batches": {
+      "get": {
+        "description": "List batches for a provider.",
+        "operationId": "list_batches_v1_batches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Batches",
+        "tags": [
+          "batches"
+        ]
+      },
+      "post": {
+        "description": "Create a batch of LLM requests for asynchronous processing.",
+        "operationId": "create_batch_v1_batches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/v1/batches/{batch_id}": {
+      "get": {
+        "description": "Retrieve the status of a batch.",
+        "operationId": "retrieve_batch_v1_batches__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/v1/batches/{batch_id}/cancel": {
+      "post": {
+        "description": "Cancel a batch.",
+        "operationId": "cancel_batch_v1_batches__batch_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/v1/batches/{batch_id}/results": {
+      "get": {
+        "description": "Retrieve the results of a completed batch.",
+        "operationId": "retrieve_batch_results_v1_batches__batch_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve Batch Results",
+        "tags": [
+          "batches"
         ]
       }
     },
