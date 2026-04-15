@@ -2,8 +2,10 @@
 
 import os
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from any_llm.exceptions import BatchNotCompleteError
+from any_llm.types.batch import BatchResult, BatchResultError, BatchResultItem
 from fastapi.testclient import TestClient
 from openai.types.batch import Batch, BatchRequestCounts
 
@@ -325,22 +327,33 @@ def test_retrieve_batch_results(
     client: TestClient,
     api_key_header: dict[str, str],
 ) -> None:
-    """GET /v1/batches/{batch_id}/results returns batch data when completed.
+    """GET /v1/batches/{batch_id}/results returns per-request results."""
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"id": "chatcmpl-1", "choices": []}
 
-    NOTE: This tests the current workaround behaviour where ``aretrieve_batch``
-    is used instead of ``aretrieve_batch_results`` (which the SDK does not yet
-    export). Once the SDK ships the batch results API, this test should be
-    updated to verify per-request results serialized via ``BatchResultResponse``.
-    """
-    mock_batch = _mock_batch(status="completed", output_file_id="file-output-123")
+    mock_result = BatchResult(
+        results=[
+            BatchResultItem(custom_id="req-1", result=mock_completion, error=None),
+            BatchResultItem(
+                custom_id="req-2", result=None, error=BatchResultError(code="rate_limit", message="Rate limit exceeded")
+            ),
+        ]
+    )
 
-    with patch("gateway.api.routes.batches.aretrieve_batch", new_callable=AsyncMock, return_value=mock_batch):
+    with patch("gateway.api.routes.batches.aretrieve_batch_results", new_callable=AsyncMock, return_value=mock_result):
         resp = client.get("/v1/batches/batch_abc123/results?provider=openai", headers=api_key_header)
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["id"] == "batch_abc123"
-    assert data["status"] == "completed"
+    assert "results" in data
+    assert len(data["results"]) == 2
+    assert data["results"][0]["custom_id"] == "req-1"
+    assert data["results"][0]["result"] == {"id": "chatcmpl-1", "choices": []}
+    assert data["results"][0]["error"] is None
+    assert data["results"][1]["custom_id"] == "req-2"
+    assert data["results"][1]["result"] is None
+    assert data["results"][1]["error"]["code"] == "rate_limit"
+    assert data["results"][1]["error"]["message"] == "Rate limit exceeded"
 
 
 def test_retrieve_batch_results_not_complete(
@@ -348,9 +361,11 @@ def test_retrieve_batch_results_not_complete(
     api_key_header: dict[str, str],
 ) -> None:
     """GET /v1/batches/{batch_id}/results returns 409 when batch is not complete."""
-    mock_batch = _mock_batch(status="in_progress")
-
-    with patch("gateway.api.routes.batches.aretrieve_batch", new_callable=AsyncMock, return_value=mock_batch):
+    with patch(
+        "gateway.api.routes.batches.aretrieve_batch_results",
+        new_callable=AsyncMock,
+        side_effect=BatchNotCompleteError(batch_id="batch_abc123", status="in_progress"),
+    ):
         resp = client.get("/v1/batches/batch_abc123/results?provider=openai", headers=api_key_header)
 
     assert resp.status_code == 409
@@ -367,10 +382,10 @@ def test_retrieve_batch_results_logs_usage(
     api_key_obj: dict[str, Any],
 ) -> None:
     """GET /v1/batches/{batch_id}/results creates a usage log entry."""
-    mock_batch = _mock_batch(status="completed", output_file_id="file-output-123")
+    mock_result = BatchResult(results=[])
     user_id = api_key_obj["user_id"]
 
-    with patch("gateway.api.routes.batches.aretrieve_batch", new_callable=AsyncMock, return_value=mock_batch):
+    with patch("gateway.api.routes.batches.aretrieve_batch_results", new_callable=AsyncMock, return_value=mock_result):
         resp = client.get("/v1/batches/batch_abc123/results?provider=openai", headers=api_key_header)
 
     assert resp.status_code == 200
