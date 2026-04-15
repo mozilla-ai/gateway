@@ -5,23 +5,22 @@ import os
 import tempfile
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from any_llm import AnyLLM, LLMProvider
-from any_llm.api import acancel_batch, acreate_batch, alist_batches, aretrieve_batch
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from any_llm.api import acancel_batch, acreate_batch, alist_batches, aretrieve_batch, aretrieve_batch_results
+from any_llm.exceptions import BatchNotCompleteError
+from any_llm.types.batch import Batch
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.api.deps import get_config, get_db, get_log_writer, verify_api_key_or_master_key
+from gateway.api.deps import get_config, get_db_if_needed, get_log_writer, verify_api_key_or_master_key
 from gateway.api.routes.chat import get_provider_kwargs
 from gateway.core.config import GatewayConfig
 from gateway.log_config import logger
 from gateway.models.entities import APIKey, UsageLog
 from gateway.services.log_writer import LogWriter
-
-if TYPE_CHECKING:
-    from any_llm.types.batch import Batch
 
 router = APIRouter(prefix="/v1/batches", tags=["batches"])
 
