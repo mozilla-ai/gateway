@@ -258,6 +258,7 @@ def test_retrieve_batch(
     data = resp.json()
     assert data["id"] == "batch_abc123"
     assert data["status"] == "in_progress"
+    assert data["provider"] == "openai"
 
 
 def test_retrieve_batch_missing_provider(
@@ -288,6 +289,7 @@ def test_cancel_batch(
     data = resp.json()
     assert data["id"] == "batch_abc123"
     assert data["status"] == "cancelling"
+    assert data["provider"] == "openai"
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +313,9 @@ def test_list_batches(
     data = resp.json()
     assert len(data["data"]) == 2
     assert data["data"][0]["id"] == "batch_1"
+    assert data["data"][0]["provider"] == "openai"
     assert data["data"][1]["id"] == "batch_2"
+    assert data["data"][1]["provider"] == "openai"
 
     # Verify pagination params were forwarded
     call_kwargs = mock_call.call_args.kwargs

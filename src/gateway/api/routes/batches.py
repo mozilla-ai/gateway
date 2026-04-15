@@ -212,7 +212,9 @@ async def retrieve_batch(
             detail="LLM provider error",
         ) from e
 
-    return batch.model_dump()
+    response_data = batch.model_dump()
+    response_data["provider"] = provider
+    return response_data
 
 
 @router.post("/{batch_id}/cancel", response_model=None)
@@ -243,7 +245,9 @@ async def cancel_batch(
             detail="LLM provider error",
         ) from e
 
-    return batch.model_dump()
+    response_data = batch.model_dump()
+    response_data["provider"] = provider
+    return response_data
 
 
 @router.get("", response_model=None)
@@ -280,7 +284,7 @@ async def list_batches(
             detail="LLM provider error",
         ) from e
 
-    return {"data": [batch.model_dump() for batch in batches]}
+    return {"data": [{**batch.model_dump(), "provider": provider} for batch in batches]}
 
 
 @router.get("/{batch_id}/results", response_model=None)
