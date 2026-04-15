@@ -10,7 +10,7 @@ from typing_extensions import override
 
 from gateway.api.deps import set_config
 from gateway.api.main import register_routers
-from gateway.core.config import GatewayConfig
+from gateway.core.config import API_KEY_HEADER, GatewayConfig
 from gateway.core.database import create_session, init_db
 from gateway.rate_limit import RateLimiter
 from gateway.services.bootstrap_service import bootstrap_first_api_key
@@ -210,7 +210,7 @@ def create_app(config: GatewayConfig) -> FastAPI:
             allow_headers=[
                 "Content-Type",
                 "Authorization",
-                "X-AnyLLM-Key",
+                API_KEY_HEADER,
                 "x-api-key",
             ],
         )
