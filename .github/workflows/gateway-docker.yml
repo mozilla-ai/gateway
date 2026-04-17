@@ -35,6 +35,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Truncate commit SHA
+        run: echo "GITHUB_SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -57,7 +60,6 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
 
       - name: Build Docker image for testing
         uses: docker/build-push-action@v7
@@ -81,7 +83,9 @@ jobs:
           file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.GITHUB_SHA_SHORT }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GATEWAY_VERSION=${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
@@ -89,9 +93,7 @@ jobs:
 
       - name: Set image output
         id: image-output
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.GITHUB_SHA_SHORT }}" >> $GITHUB_OUTPUT
 
   update-dockerhub-description:
     runs-on: ubuntu-latest

@@ -5,7 +5,7 @@ on:
     inputs:
       image_tag:
         type: string
-        description: 'Image tag to deploy (e.g. sha-abc1234)'
+        description: 'Image tag to deploy (e.g. abc1234)'
         required: true
 
 env:
