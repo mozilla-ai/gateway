@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.models import hash_key
-from gateway.core.config import API_KEY_HEADER, GatewayConfig
+from gateway.core.config import API_KEY_HEADER, LEGACY_API_KEY_HEADER, GatewayConfig
 from gateway.core.database import get_db
 from gateway.metrics import record_auth_failure
 from gateway.models.entities import APIKey
@@ -42,10 +42,15 @@ def reset_config() -> None:
 def _extract_bearer_token(request: Request, config: GatewayConfig) -> str:
     """Extract and validate Bearer token from request header.
 
-    Checks the canonical AnyLLM-Key header first, then falls back to the
-    standard Authorization header.
+    Checks the canonical AnyLLM-Key header first, then the legacy
+    X-AnyLLM-Key alias (back-compat), then falls back to the standard
+    Authorization header.
     """
-    auth_header = request.headers.get(API_KEY_HEADER) or request.headers.get("Authorization")
+    auth_header = (
+        request.headers.get(API_KEY_HEADER)
+        or request.headers.get(LEGACY_API_KEY_HEADER)
+        or request.headers.get("Authorization")
+    )
 
     if auth_header:
         if not auth_header.startswith("Bearer "):

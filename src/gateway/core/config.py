@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_KEY_HEADER = "AnyLLM-Key"
+LEGACY_API_KEY_HEADER = "X-AnyLLM-Key"  # Back-compat alias; prefer API_KEY_HEADER.
 
 
 class PricingConfig(BaseModel):
