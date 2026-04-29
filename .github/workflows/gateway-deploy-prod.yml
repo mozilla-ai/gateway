@@ -42,6 +42,6 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: new-task-definition.json
-          service: otari-platform-gateway-service-production
-          cluster: otari-platform-cluster-production
+          service: otari-ai-service-production
+          cluster: otari-ai-cluster-production
           wait-for-service-stability: true
