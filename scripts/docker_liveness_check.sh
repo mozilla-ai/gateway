@@ -4,7 +4,7 @@
 # Starts PostgreSQL, runs the gateway container, and validates health endpoints.
 #
 # Usage: ./scripts/docker_liveness_check.sh <image_tag>
-# Example: ./scripts/docker_liveness_check.sh gateway-test:abc123
+# Example: ./scripts/docker_liveness_check.sh otari-test:abc123
 #
 
 set -euo pipefail
@@ -13,7 +13,7 @@ IMAGE_TAG="${1:-}"
 
 if [[ -z "$IMAGE_TAG" ]]; then
     echo "Usage: $0 <image_tag>"
-    echo "Example: $0 gateway-test:latest"
+    echo "Example: $0 otari-test:latest"
     exit 1
 fi
 

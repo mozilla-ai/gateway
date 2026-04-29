@@ -4,4 +4,4 @@ services:
       context: .
       dockerfile: Dockerfile
 
-    image: gateway:local
+    image: otari:local

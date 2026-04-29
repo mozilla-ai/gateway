@@ -10,7 +10,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  IMAGE_NAME: mzdotai/gateway
+  IMAGE_NAME: mzdotai/otari
 
 jobs:
   deploy-production:
