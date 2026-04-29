@@ -20,7 +20,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: mzdotai/gateway
+  IMAGE_NAME: mzdotai/otari
   AWS_REGION: us-east-2
 
 jobs:
@@ -67,14 +67,14 @@ jobs:
           context: .
           file: Dockerfile
           load: true
-          tags: gateway-test:${{ github.sha }}
+          tags: otari-test:${{ github.sha }}
           build-args: |
             GATEWAY_VERSION=${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Run container liveness check
-        run: ./scripts/docker_liveness_check.sh gateway-test:${{ github.sha }}
+        run: ./scripts/docker_liveness_check.sh otari-test:${{ github.sha }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -110,7 +110,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: mzdotai/gateway
+          repository: mzdotai/otari
           readme-filepath: ./README.md
 
   deploy-development:
