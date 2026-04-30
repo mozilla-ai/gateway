@@ -8,6 +8,7 @@ from gateway.api.routes import (
     keys,
     messages,
     models,
+    moderations,
     platform_mode,
     pricing,
     responses,
@@ -28,6 +29,7 @@ def register_routers(app: FastAPI, config: GatewayConfig) -> None:
     app.include_router(messages.router)
     app.include_router(responses.router)
     app.include_router(embeddings.router)
+    app.include_router(moderations.router)
     app.include_router(models.router)
     app.include_router(keys.router)
     app.include_router(users.router)
