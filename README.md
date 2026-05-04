@@ -1,12 +1,4 @@
-<p align="center">
-  <picture>
-    <img src="https://raw.githubusercontent.com/mozilla-ai/otari/refs/heads/main/docs/public/images/otari-logo-mark.png" width="18%" alt="Project logo"/>
-  </picture>
-</p>
-
-<div align="center">
-
-# gateway
+# otari gateway
 
 [![Tests](https://github.com/mozilla-ai/gateway/actions/workflows/gateway-tests.yml/badge.svg)](https://github.com/mozilla-ai/gateway/actions/workflows/gateway-tests.yml)
 [![Lint](https://github.com/mozilla-ai/gateway/actions/workflows/gateway-lint.yml/badge.svg)](https://github.com/mozilla-ai/gateway/actions/workflows/gateway-lint.yml)
