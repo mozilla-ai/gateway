@@ -50,6 +50,10 @@ where = ["src"]
 target-version = "py313"
 line-length = 120
 src = ["src", "tests", "scripts"]
+# `infra/sandbox-image/` is a self-contained package with its own pyproject,
+# ruff config, and Python target. The gateway lint shouldn't touch it; the
+# sandbox-image's own CI/build does. Same for `demo/` (shell scripts).
+extend-exclude = ["infra/", "demo/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

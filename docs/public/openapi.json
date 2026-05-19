@@ -184,6 +184,19 @@
             ],
             "title": "Tools"
           },
+          "tools_header": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional override for the lead-in that the gateway prepends before the per-tool hint block in the system message. Useful for expressing global tool-selection policy (e.g. 'prefer MCP tools over code_execution'). Falls back to GATEWAY_TOOLS_HEADER env, then to the built-in default.",
+            "title": "Tools Header"
+          },
           "top_p": {
             "anyOf": [
               {

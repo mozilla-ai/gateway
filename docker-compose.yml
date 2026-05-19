@@ -5,20 +5,55 @@ services:
 
     # If you want to use a different port, change it here and in the config.yml file.
     ports:
-      - "8000:8000"
+      # Host port 8000 by default. Override via $GATEWAY_PORT when other
+      # services on the host already own :8000 (e.g. another local backend).
+      - "${GATEWAY_PORT:-8000}:8000"
     volumes:
-      - ./config.yml:/app/config.yml
+      # Default `./config.yml` matches the existing operator convention
+      # (gitignored, operator-supplied). The demo overrides this via
+      # GATEWAY_CONFIG_PATH=./demo/code-exec/gateway-config.yml so the
+      # repo's main config.yml stays untouched.
+      - ${GATEWAY_CONFIG_PATH:-./config.yml}:/app/config.yml
       - ./service_account.json:/app/service_account.json
     command: ["gateway", "serve", "--config", "/app/config.yml"]
+    environment:
+      # In-network URL of the sandbox image — set so the gateway can dispatch
+      # `code_execution` tool calls to the sandbox container without any
+      # client-side configuration.
+      - GATEWAY_SANDBOX_URL=http://sandbox:8080
+      # Optional operator-level purpose hint for the code_execution tool. Falls
+      # back to a Python/pandas/numpy-flavoured default if unset. Per-request
+      # tools[i].purpose_hint still wins over this.
+      - GATEWAY_SANDBOX_PURPOSE_HINT=${GATEWAY_SANDBOX_PURPOSE_HINT:-}
+      # Optional operator-level header for the per-tool hint block in the system
+      # message. Falls back to "You have access to the following tools:" if unset.
+      # Useful for tone/translation/deployment-wide preferences. Not per-request:
+      # callers who want a custom framing should set their own system message.
+      - GATEWAY_TOOLS_HEADER=${GATEWAY_TOOLS_HEADER:-}
+      # Pass provider API keys from host env so config.yml stays free of
+      # secrets. any-llm/the underlying SDK picks them up when the config
+      # doesn't override.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Local llamafile (open-weight model) endpoint. host.docker.internal
+      # routes from the gateway container back to a llamafile running on
+      # the macOS/Windows host. Override if you run the model elsewhere.
+      - LLAMAFILE_API_BASE=${LLAMAFILE_API_BASE:-http://host.docker.internal:8080/v1}
     depends_on:
       postgres:
+        condition: service_healthy
+      sandbox:
         condition: service_healthy
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
     ports:
-      - "5432:5432"
+      # Host port 5433 (container still :5432) — avoids clashing with another
+      # local postgres on the default port. Gateway connects via the Docker
+      # network at postgres:5432, so the host mapping is only for external
+      # tools (psql / TablePlus / etc.). Override with $GATEWAY_POSTGRES_PORT.
+      - "${GATEWAY_POSTGRES_PORT:-5433}:5432"
     environment:
       - POSTGRES_USER=gateway
       - POSTGRES_PASSWORD=gateway
@@ -30,6 +65,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # Code-execution sandbox — a Python REPL container the gateway dispatches
+  # `code_execution` tool calls to. Built locally from infra/sandbox-image/ for
+  # now; a published ghcr.io image is the follow-up.
+  sandbox:
+    build:
+      context: ./infra/sandbox-image
+    ports:
+      - "8180:8080"  # exposed for ad-hoc curl/debugging
+    environment:
+      - SANDBOX_SESSIONS_ROOT=/var/sandbox/sessions
+      - SANDBOX_SESSION_IDLE_TIMEOUT=900
+      - SANDBOX_SESSION_MAX_LIFETIME=7200
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
