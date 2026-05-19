@@ -14,6 +14,7 @@ yields `ChatCompletionChunk` objects across the entire loop as a single
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -29,22 +30,36 @@ if TYPE_CHECKING:
 MAX_TOOL_ITERATIONS_CAP = 25
 DEFAULT_MAX_TOOL_ITERATIONS = 10
 
-# Lead-in for the per-server purpose-hint block we prepend to the system message.
-# Surfaced as a constant so phrasing can be tuned for different model families
-# (open-weight models in particular benefit from more directive language).
-PURPOSE_HINT_HEADER = "You have access to the following MCP tool servers:"
+# Lead-in for the per-source purpose-hint block we prepend to the system message.
+# Generic across MCP servers, the sandbox code-execution tool, and any future
+# tool source. Surfaced as a constant so phrasing can be tuned for different
+# model families (open-weight models in particular benefit from more directive
+# language).
+PURPOSE_HINT_HEADER = "You have access to the following tools:"
 
 
 class MaxToolIterationsExceeded(Exception):
     """Raised when the loop fails to reach a non-tool-call finish in N rounds."""
 
 
-def inject_purpose_hints(messages: list[dict[str, Any]], hints: list[tuple[str, str]]) -> list[dict[str, Any]]:
-    """Prepend or extend the system message with per-server usage hints. Returns a new list."""
+def inject_purpose_hints(
+    messages: list[dict[str, Any]],
+    hints: list[tuple[str, str]],
+    *,
+    header: str | None = None,
+) -> list[dict[str, Any]]:
+    """Prepend or extend the system message with per-tool usage hints.
+
+    Header resolution priority:
+      1. ``header`` arg (per-request override, set from the request body)
+      2. ``GATEWAY_TOOLS_HEADER`` env (per-deployment override)
+      3. :data:`PURPOSE_HINT_HEADER` built-in default
+    """
     if not hints:
         return messages
 
-    lines = [PURPOSE_HINT_HEADER]
+    effective_header = header or os.environ.get("GATEWAY_TOOLS_HEADER") or PURPOSE_HINT_HEADER
+    lines = [effective_header]
     for name, hint in hints:
         lines.append(f"- {name}: {hint}")
     block = "\n".join(lines)

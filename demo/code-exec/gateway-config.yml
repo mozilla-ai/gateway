@@ -1,0 +1,25 @@
+# OSS gateway demo config — standalone mode (no platform service).
+# Mounted as /app/config.yml by docker-compose.
+#
+# Anthropic API key is *not* hardcoded here. Set ANTHROPIC_API_KEY in your
+# shell before `docker compose up`; the compose passes it through to the
+# gateway container, and any-llm falls through to the Anthropic SDK's
+# ANTHROPIC_API_KEY env-var lookup when the config doesn't include the key.
+
+host: "0.0.0.0"
+port: 8000
+
+# Convenient default master key for local-dev / demo work.
+master_key: demo-master-key
+
+providers:
+  # Empty stanza: any-llm reads ANTHROPIC_API_KEY from env via the SDK.
+  anthropic: {}
+  # OpenAI uses OPENAI_API_KEY from env (only needed for the demo's
+  # --openai mode; safe to leave the stanza here if the key is unset).
+  openai: {}
+  # Local llamafile (open-weight model) — host.docker.internal lets the
+  # gateway container reach the llamafile process running on the host.
+  # Override via LLAMAFILE_API_BASE if you run the model elsewhere.
+  llamafile:
+    api_base: "http://host.docker.internal:8080/v1"

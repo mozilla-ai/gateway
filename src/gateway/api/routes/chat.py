@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -38,6 +39,7 @@ from gateway.services.mcp_loop import (
     mcp_tool_loop_stream,
 )
 from gateway.services.pricing_service import find_model_pricing
+from gateway.services.sandbox_backend import SandboxBackend
 from gateway.streaming import (
     OPENAI_STREAM_FORMAT,
     StreamingAttemptFailure,
@@ -56,6 +58,54 @@ def rate_limit_headers(info: RateLimitInfo) -> dict[str, str]:
         "X-RateLimit-Remaining": str(info.remaining),
         "X-RateLimit-Reset": str(int(info.reset)),
     }
+
+
+def _is_code_execution_tool_type(type_value: Any) -> bool:
+    """Recognise the tool-array shapes Anthropic and OpenAI use for code execution.
+
+    Accepts:
+      * ``"code_execution"`` — gateway-native short form
+      * ``"code_interpreter"`` — OpenAI Responses/Assistants API
+      * ``"code_execution_*"`` — Anthropic versioned types
+        (e.g. ``"code_execution_20250825"``)
+
+    Matching Anthropic by prefix means new versions (``code_execution_20260101``,
+    etc.) keep working without a code change. Our sandbox is a generic Python
+    REPL, so we don't need to track per-version semantics.
+    """
+    if not isinstance(type_value, str):
+        return False
+    return (
+        type_value == "code_execution" or type_value == "code_interpreter" or type_value.startswith("code_execution_")
+    )
+
+
+def _extract_code_execution_tool(
+    tools: list[dict[str, Any]] | None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None]:
+    """Pull the first code-execution-style entry out of ``tools``.
+
+    Detects the gateway-native ``{"type": "code_execution"}`` shape plus the
+    provider-native equivalents from OpenAI (``code_interpreter``) and Anthropic
+    (``code_execution_20250825`` and future versions). All three map to the same
+    sandbox backend so swapping ``base_url`` to the gateway keeps existing
+    SDK code working unchanged.
+
+    Returns ``(entry_or_None, remaining_tools_or_None)``. The thin entry doesn't
+    carry the function schema the model needs — SandboxBackend.openai_tools
+    provides the full definition during the tool-use loop's tool injection.
+    Remaining user-supplied tools pass through to the model unchanged.
+    """
+    if not tools:
+        return None, tools
+    entry: dict[str, Any] | None = None
+    remaining: list[dict[str, Any]] = []
+    for t in tools:
+        if entry is None and isinstance(t, dict) and _is_code_execution_tool_type(t.get("type")):
+            entry = t
+        else:
+            remaining.append(t)
+    return entry, (remaining or None)
 
 
 class ChatCompletionRequest(BaseModel):
@@ -84,6 +134,16 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: str | dict[str, Any] | None = None
     response_format: dict[str, Any] | None = None
     mcp_servers: list[McpServerConfig] | None = None
+    tools_header: str | None = Field(
+        default=None,
+        max_length=4000,
+        description=(
+            "Optional override for the lead-in that the gateway prepends before the "
+            "per-tool hint block in the system message. Useful for expressing "
+            "global tool-selection policy (e.g. 'prefer MCP tools over code_execution'). "
+            "Falls back to GATEWAY_TOOLS_HEADER env, then to the built-in default."
+        ),
+    )
     max_tool_iterations: int | None = Field(default=None, ge=1, le=MAX_TOOL_ITERATIONS_CAP)
 
 
@@ -544,6 +604,38 @@ async def chat_completions(
         if config.budget_strategy == "for_update":
             await db.rollback()
 
+    # Per-request opt-in for sandboxed code execution. Matches Anthropic /
+    # OpenAI's wire shape: caller adds {"type": "code_execution"} to their
+    # `tools` array. Optional per-entry `sandbox_url` carries an inline
+    # override; absence falls back to the operator's GATEWAY_SANDBOX_URL.
+    # Mutually exclusive with `mcp_servers` for now (multi-backend dispatch
+    # is the next iteration); the multi-attempt routing-policy fallback is
+    # also bypassed when sandbox is in use.
+    sandbox_tool_entry, remaining_user_tools = _extract_code_execution_tool(request.tools)
+    default_sandbox_url = os.environ.get("GATEWAY_SANDBOX_URL") or None
+    sandbox_url: str | None = None
+    use_sandbox = False
+    if sandbox_tool_entry is not None:
+        sandbox_url = sandbox_tool_entry.get("sandbox_url") or default_sandbox_url
+        if sandbox_url is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "code_execution tool requested but no sandbox is configured on this gateway. "
+                    "Set GATEWAY_SANDBOX_URL, supply `sandbox_url` on the tool entry, or remove "
+                    "code_execution from `tools`."
+                ),
+            )
+        if request.mcp_servers:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "code_execution and mcp_servers cannot be combined in the same request yet; "
+                    "pick one. Multi-backend dispatch is a planned refinement."
+                ),
+            )
+        use_sandbox = True
+
     # ------------------------------------------------------------------
     # Streaming path: iterate `route.attempts` before any bytes are flushed,
     # then commit to the first attempt that yields a chunk. Implemented in
@@ -555,7 +647,10 @@ async def chat_completions(
     # Errors after first chunk propagate to the client.
     # ------------------------------------------------------------------
     if request.stream:
-        if platform_mode:
+        # Sandbox path collapses to the standalone streaming block below so
+        # the sandbox loop sees a single set of credentials; multi-attempt
+        # fallback is intentionally not layered around it (see comment above).
+        if platform_mode and not use_sandbox:
             if route is None or not route.attempts:
                 if route is not None:
                     logger.error(
@@ -613,7 +708,17 @@ async def chat_completions(
 
         request_fields = request.model_dump(exclude_unset=True)
         request_fields.pop("mcp_servers", None)
+        request_fields.pop("tools_header", None)
         request_fields.pop("max_tool_iterations", None)
+        # `user` is gateway accounting only — Anthropic's SDK rejects unknown kwargs.
+        request_fields.pop("user", None)
+        # The thin code_execution tool entry is gateway syntax — the
+        # SandboxBackend re-injects a full function-tool definition.
+        if sandbox_tool_entry is not None:
+            if remaining_user_tools:
+                request_fields["tools"] = remaining_user_tools
+            else:
+                request_fields.pop("tools", None)
         completion_kwargs = {**provider_kwargs, **request_fields}
         if completion_kwargs.get("stream_options") is None:
             completion_kwargs["stream_options"] = {"include_usage": True}
@@ -628,7 +733,11 @@ async def chat_completions(
                     async with MCPClientPool(pool_configs) as pool:
                         kwargs = {
                             **completion_kwargs,
-                            "messages": inject_purpose_hints(completion_kwargs["messages"], pool.purpose_hints()),
+                            "messages": inject_purpose_hints(
+                                completion_kwargs["messages"],
+                                pool.purpose_hints(),
+                                header=request.tools_header,
+                            ),
                         }
                         async for chunk in mcp_tool_loop_stream(
                             completion_kwargs=kwargs,
@@ -638,6 +747,34 @@ async def chat_completions(
                             yield chunk
 
                 stream: AsyncIterator[ChatCompletionChunk] = _mcp_stream()
+            elif use_sandbox:
+                # SandboxBackend duck-types as MCPClientPool — same tool-loop helper.
+                sandbox_url_local = sandbox_url  # narrow for closure
+                assert sandbox_url_local is not None
+                sandbox_hint = (
+                    (sandbox_tool_entry.get("purpose_hint") if sandbox_tool_entry else None)
+                    or os.environ.get("GATEWAY_SANDBOX_PURPOSE_HINT")
+                    or None
+                )
+
+                async def _sandbox_stream() -> AsyncIterator[ChatCompletionChunk]:
+                    async with SandboxBackend(sandbox_url=sandbox_url_local, purpose_hint=sandbox_hint) as backend:
+                        kwargs = {
+                            **completion_kwargs,
+                            "messages": inject_purpose_hints(
+                                completion_kwargs["messages"],
+                                backend.purpose_hints(),
+                                header=request.tools_header,
+                            ),
+                        }
+                        async for chunk in mcp_tool_loop_stream(
+                            completion_kwargs=kwargs,
+                            pool=backend,  # type: ignore[arg-type]
+                            max_iterations=max_tool_iterations,
+                        ):
+                            yield chunk
+
+                stream = _sandbox_stream()
             else:
                 stream = await acompletion(**completion_kwargs)  # type: ignore[assignment]
         except HTTPException:
@@ -710,8 +847,10 @@ async def chat_completions(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Authorization service returned no resolvable provider",
             )
-        # MCP mode: collapse to the primary attempt, no per-attempt fallback.
-        if mcp_server_configs:
+        # MCP / sandbox modes: collapse to the primary attempt, no per-attempt
+        # fallback (a tool-use loop shouldn't silently swap providers between
+        # rounds).
+        if mcp_server_configs or use_sandbox:
             attempts_to_try = attempts_to_try[:1]
     else:
         provider, model = AnyLLM.split_model_provider(request.model)
@@ -730,7 +869,14 @@ async def chat_completions(
     if platform_mode:
         base_request_fields = request.model_dump(exclude_unset=True)
         base_request_fields.pop("mcp_servers", None)
+        base_request_fields.pop("tools_header", None)
         base_request_fields.pop("max_tool_iterations", None)
+        base_request_fields.pop("user", None)
+        if sandbox_tool_entry is not None:
+            if remaining_user_tools:
+                base_request_fields["tools"] = remaining_user_tools
+            else:
+                base_request_fields.pop("tools", None)
         for attempt in attempts_to_try:
             attempt_provider = LLMProvider(attempt.provider)
             attempt_model = attempt.model
@@ -749,11 +895,36 @@ async def chat_completions(
                     async with MCPClientPool(mcp_server_configs) as pool:
                         mcp_kwargs = {
                             **completion_kwargs,
-                            "messages": inject_purpose_hints(completion_kwargs["messages"], pool.purpose_hints()),
+                            "messages": inject_purpose_hints(
+                                completion_kwargs["messages"],
+                                pool.purpose_hints(),
+                                header=request.tools_header,
+                            ),
                         }
                         completion: ChatCompletion = await mcp_tool_loop(
                             completion_kwargs=mcp_kwargs,
                             pool=pool,
+                            max_iterations=max_tool_iterations,
+                        )
+                elif use_sandbox:
+                    assert sandbox_url is not None
+                    sandbox_hint = (
+                        (sandbox_tool_entry.get("purpose_hint") if sandbox_tool_entry else None)
+                        or os.environ.get("GATEWAY_SANDBOX_PURPOSE_HINT")
+                        or None
+                    )
+                    async with SandboxBackend(sandbox_url=sandbox_url, purpose_hint=sandbox_hint) as backend:
+                        sandbox_kwargs = {
+                            **completion_kwargs,
+                            "messages": inject_purpose_hints(
+                                completion_kwargs["messages"],
+                                backend.purpose_hints(),
+                                header=request.tools_header,
+                            ),
+                        }
+                        completion = await mcp_tool_loop(
+                            completion_kwargs=sandbox_kwargs,
+                            pool=backend,  # type: ignore[arg-type]
                             max_iterations=max_tool_iterations,
                         )
                 else:
@@ -836,12 +1007,21 @@ async def chat_completions(
             detail=detail,
         ) from last_exc
 
-    # Standalone path (no platform / no fallback). Same MCP semantics as
-    # platform mode above: if `mcp_servers` is set, the request goes through
-    # the tool-use loop instead of a single ``acompletion`` call.
+    # Standalone path (no platform / no fallback). Same MCP/sandbox semantics
+    # as platform mode above: if `mcp_servers` is set, the request goes through
+    # the MCP tool-use loop; if `tools` includes a code_execution entry, the
+    # request goes through the SandboxBackend tool-use loop; otherwise a
+    # single ``acompletion`` call.
     request_fields = request.model_dump(exclude_unset=True)
     request_fields.pop("mcp_servers", None)
+    request_fields.pop("tools_header", None)
     request_fields.pop("max_tool_iterations", None)
+    request_fields.pop("user", None)
+    if sandbox_tool_entry is not None:
+        if remaining_user_tools:
+            request_fields["tools"] = remaining_user_tools
+        else:
+            request_fields.pop("tools", None)
     completion_kwargs = {**provider_kwargs, **request_fields}
 
     try:
@@ -849,11 +1029,36 @@ async def chat_completions(
             async with MCPClientPool(mcp_server_configs) as pool:
                 mcp_kwargs = {
                     **completion_kwargs,
-                    "messages": inject_purpose_hints(completion_kwargs["messages"], pool.purpose_hints()),
+                    "messages": inject_purpose_hints(
+                        completion_kwargs["messages"],
+                        pool.purpose_hints(),
+                        header=request.tools_header,
+                    ),
                 }
                 completion = await mcp_tool_loop(
                     completion_kwargs=mcp_kwargs,
                     pool=pool,
+                    max_iterations=max_tool_iterations,
+                )
+        elif use_sandbox:
+            assert sandbox_url is not None
+            sandbox_hint = (
+                (sandbox_tool_entry.get("purpose_hint") if sandbox_tool_entry else None)
+                or os.environ.get("GATEWAY_SANDBOX_PURPOSE_HINT")
+                or None
+            )
+            async with SandboxBackend(sandbox_url=sandbox_url, purpose_hint=sandbox_hint) as backend:
+                sandbox_kwargs = {
+                    **completion_kwargs,
+                    "messages": inject_purpose_hints(
+                        completion_kwargs["messages"],
+                        backend.purpose_hints(),
+                        header=request.tools_header,
+                    ),
+                }
+                completion = await mcp_tool_loop(
+                    completion_kwargs=sandbox_kwargs,
+                    pool=backend,  # type: ignore[arg-type]
                     max_iterations=max_tool_iterations,
                 )
         else:
