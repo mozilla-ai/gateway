@@ -3,9 +3,7 @@
 from fastapi.testclient import TestClient
 
 
-def test_get_active_user_via_budget_endpoint(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_get_active_user_via_budget_endpoint(client: TestClient, master_key_header: dict[str, str]) -> None:
     client.post(
         "/v1/users",
         json={"user_id": "helper-test-user", "alias": "Helper Test"},
@@ -16,9 +14,7 @@ def test_get_active_user_via_budget_endpoint(
     assert resp.json()["user_id"] == "helper-test-user"
 
 
-def test_get_active_user_returns_none_for_deleted(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_get_active_user_returns_none_for_deleted(client: TestClient, master_key_header: dict[str, str]) -> None:
     client.post(
         "/v1/users",
         json={"user_id": "to-delete-user"},
@@ -29,16 +25,12 @@ def test_get_active_user_returns_none_for_deleted(
     assert resp.status_code == 404
 
 
-def test_get_active_user_returns_none_for_nonexistent(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_get_active_user_returns_none_for_nonexistent(client: TestClient, master_key_header: dict[str, str]) -> None:
     resp = client.get("/v1/users/nonexistent-user", headers=master_key_header)
     assert resp.status_code == 404
 
 
-def test_budget_from_model_roundtrip(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_budget_from_model_roundtrip(client: TestClient, master_key_header: dict[str, str]) -> None:
     resp = client.post(
         "/v1/budgets",
         json={"max_budget": 50.0, "budget_duration_sec": 3600},
@@ -50,9 +42,7 @@ def test_budget_from_model_roundtrip(
     assert data["budget_duration_sec"] == 3600
 
 
-def test_pricing_from_model_roundtrip(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_pricing_from_model_roundtrip(client: TestClient, master_key_header: dict[str, str]) -> None:
     resp = client.post(
         "/v1/pricing",
         json={
@@ -69,9 +59,7 @@ def test_pricing_from_model_roundtrip(
     assert data["output_price_per_million"] == 10.0
 
 
-def test_resolve_user_id_chat_master_key_requires_user(
-    client: TestClient, master_key_header: dict[str, str]
-) -> None:
+def test_resolve_user_id_chat_master_key_requires_user(client: TestClient, master_key_header: dict[str, str]) -> None:
     resp = client.post(
         "/v1/chat/completions",
         json={

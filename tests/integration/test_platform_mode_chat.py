@@ -449,9 +449,7 @@ def test_platform_mode_streaming_falls_through_on_first_attempt_failure(
                     "object": "chat.completion.chunk",
                     "created": 1700000000,
                     "model": "gpt-4o-mini",
-                    "choices": [
-                        {"index": 0, "delta": {"content": "hi"}, "finish_reason": None}
-                    ],
+                    "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}],
                 }
             )
             yield ChatCompletionChunk.model_validate(
@@ -460,9 +458,7 @@ def test_platform_mode_streaming_falls_through_on_first_attempt_failure(
                     "object": "chat.completion.chunk",
                     "created": 1700000000,
                     "model": "gpt-4o-mini",
-                    "choices": [
-                        {"index": 0, "delta": {}, "finish_reason": "stop"}
-                    ],
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                     "usage": {
                         "prompt_tokens": 5,
                         "completion_tokens": 1,

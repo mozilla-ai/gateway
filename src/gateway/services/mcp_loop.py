@@ -62,9 +62,7 @@ def _accumulate_tool_call_deltas(slots: dict[int, dict[str, Any]], deltas: list[
     """Merge incremental streaming tool_call deltas into per-index slots."""
     for delta in deltas:
         idx = delta.index
-        slot = slots.setdefault(
-            idx, {"id": None, "type": "function", "function": {"name": "", "arguments": ""}}
-        )
+        slot = slots.setdefault(idx, {"id": None, "type": "function", "function": {"name": "", "arguments": ""}})
         if getattr(delta, "id", None):
             slot["id"] = delta.id
         if getattr(delta, "type", None):

@@ -124,8 +124,7 @@ async def _verify_and_update_api_key(db: AsyncSession, token: str) -> APIKey:
     now = datetime.now(UTC)
     last_used_at = _as_utc(api_key.last_used_at)
     should_update_last_used = (
-        last_used_at is None
-        or (now - last_used_at).total_seconds() >= _LAST_USED_UPDATE_INTERVAL_SECONDS
+        last_used_at is None or (now - last_used_at).total_seconds() >= _LAST_USED_UPDATE_INTERVAL_SECONDS
     )
 
     if should_update_last_used:

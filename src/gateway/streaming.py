@@ -175,7 +175,8 @@ async def iterate_streaming_attempts(
             return attempt, _empty_async_iter()
         except asyncio.TimeoutError as exc:
             await on_attempt_failed(
-                attempt, StreamingAttemptFailure("timeout", exc),
+                attempt,
+                StreamingAttemptFailure("timeout", exc),
             )
             await _close_stream_quietly(stream)
             last_exception = exc

@@ -331,9 +331,7 @@ async def test_loop_handles_duck_typed_tool_calls(monkeypatch: pytest.MonkeyPatc
         max_iterations=5,
     )
     assert out.choices[0].finish_reason == "stop"
-    assert pool.calls == [("fetch_url", {"u": "x"})], (
-        "loop must execute duck-typed function tool_calls"
-    )
+    assert pool.calls == [("fetch_url", {"u": "x"})], "loop must execute duck-typed function tool_calls"
 
 
 @pytest.mark.asyncio

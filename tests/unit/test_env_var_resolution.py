@@ -55,9 +55,7 @@ def test_inline_substitution() -> None:
     os.environ["TEST_DB_ROLE"] = "readwrite"
     os.environ["TEST_DB_HOST"] = "db.example.com"
     try:
-        result = _resolve_env_vars(
-            {"url": "postgresql://${TEST_DB_USER}:${TEST_DB_ROLE}@${TEST_DB_HOST}/mydb"}
-        )
+        result = _resolve_env_vars({"url": "postgresql://${TEST_DB_USER}:${TEST_DB_ROLE}@${TEST_DB_HOST}/mydb"})
         assert result["url"] == "postgresql://admin:readwrite@db.example.com/mydb"
     finally:
         del os.environ["TEST_DB_USER"]
@@ -70,9 +68,7 @@ def test_inline_substitution_missing_var_raises() -> None:
     os.environ.pop("TEST_INLINE_MISSING", None)
     try:
         with pytest.raises(ValueError, match="TEST_INLINE_MISSING"):
-            _resolve_env_vars(
-                {"url": "prefix-${TEST_INLINE_OK}-${TEST_INLINE_MISSING}-suffix"}
-            )
+            _resolve_env_vars({"url": "prefix-${TEST_INLINE_OK}-${TEST_INLINE_MISSING}-suffix"})
     finally:
         del os.environ["TEST_INLINE_OK"]
 

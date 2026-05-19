@@ -62,9 +62,7 @@ def validate_mcp_url(url: str, *, has_authorization_token: bool) -> None:
     if scheme not in {"http", "https"}:
         raise UnsafeURLError(f"MCP server URL must use http or https, got {scheme!r}")
     if scheme == "http" and has_authorization_token:
-        raise UnsafeURLError(
-            "MCP server URL must use https when an authorization_token is set"
-        )
+        raise UnsafeURLError("MCP server URL must use https when an authorization_token is set")
 
     host = parsed.hostname
     if not host:
